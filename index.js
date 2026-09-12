@@ -22,7 +22,7 @@ function warn(key) { globalThis.toastr?.warning(t(key), t('title')); }
 async function api(route, body) {
     if (route === '/records') return storage.read();
     if (route === '/begin') {
-        const row = { ...body, timestamp: new Date().toISOString(), schema_version: 2, provider: 'openrouter',
+        const row = { ...body, timestamp: new Date().toISOString(), schema_version: 2,
             cost: null, input_tokens: null, output_tokens: null, currency: 'USD', cost_source: 'unknown', status: 'pending' };
         await storage.update([row]); return row;
     }
@@ -95,11 +95,12 @@ function installCollector() {
         const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
         try { body = typeof options?.body === 'string' ? JSON.parse(options.body) : null; } catch { /* Not JSON */ }
         const endpoint = new URL(url, location.href);
+        const provider = body?.chat_completion_source;
         if (endpoint.origin !== location.origin || endpoint.pathname !== '/api/backends/chat-completions/generate'
-            || body?.chat_completion_source !== 'openrouter' || !connected) return originalFetch(input, options);
+            || !['openrouter', 'vertexai'].includes(provider) || !connected) return originalFetch(input, options);
         // Group chats and multi-choice batches need a separate association strategy.
         const active = run?.chat === context().chat && !context().groupId ? run : null;
-        const row = { id: crypto.randomUUID(), model: body.model, secret_id: typeof body.secret_id === 'string' ? body.secret_id : null,
+        const row = { id: crypto.randomUUID(), provider, model: body.model, secret_id: typeof body.secret_id === 'string' ? body.secret_id : null,
             ...(active?.identity || chatIdentity(context())), kind: active?.kind || 'quiet' };
         try { Object.assign(row, await api('/begin', row)); }
         catch { warn('saveError'); return originalFetch(input, options); }
@@ -114,7 +115,7 @@ function installCollector() {
                     if (response.ok) {
                         await readUsage(observed, data => {
                             if (typeof data.id === 'string') row.request_id = data.id;
-                            const usage = usageFrom(data);
+                            const usage = usageFrom(data, provider, row.model);
                             for (const [key, value] of Object.entries(usage)) {
                                 if (value !== null && !(key === 'cost_source' && value === 'unknown' && row.cost_source === 'provider')) row[key] = value;
                             }
@@ -219,14 +220,21 @@ function render() {
         }
     }
     account.append(node('p', 'tl-muted', t('queryLimit')));
-    content.append(account, node('p', 'tl-muted', t('coverage')), node('p', 'tl-muted', t('timezone')));
+    const vertexRows = rows.filter(r => r.provider === 'vertexai');
+    const vertexSpend = summarize(vertexRows);
+    const configuredCredit = Number(context().extensionSettings[NAME]?.vertexCredit ?? 300);
+    const vertex = node('section', 'tl-account'); vertex.append(node('h3', '', t('vertexAccount')),
+        node('div', 'tl-account-row', `${t('vertexEstimatedBalance')}: ${usd(Math.max(0, configuredCredit - vertexSpend.total))}`),
+        node('div', 'tl-account-row', `${t('vertexRecordedSpend')}: ${usd(vertexSpend.total)}`),
+        node('p', 'tl-muted', t('vertexBalanceNote')));
+    content.append(account, vertex, node('p', 'tl-muted', t('coverage')), node('p', 'tl-muted', t('timezone')));
     const search = node('input', 'text_pole tl-search'); search.placeholder = t('filter'); search.setAttribute('aria-label', t('filter')); search.value = filter;
     search.addEventListener('input', () => { filter = search.value; renderList(list); });
     const list = node('div', 'tl-list'); content.append(search, list); renderList(list);
 }
 function renderList(list) {
     list.replaceChildren();
-    const filtered = rows.filter(r => [r.character, r.chat_name, r.model].join(' ').toLowerCase().includes(filter.toLowerCase()));
+    const filtered = rows.filter(r => [r.character, r.chat_name, r.model, r.provider].join(' ').toLowerCase().includes(filter.toLowerCase()));
     if (!filtered.length) list.append(node('p', 'tl-muted', t('empty')));
     for (const r of filtered.slice(0, 500)) {
         const item = node('details', 'tl-row'), heading = node('summary', '');
@@ -238,7 +246,7 @@ function renderList(list) {
         const identity = node('span', 'tl-identity', `${r.character || '—'} / ${r.chat_name || '—'}`);
         identity.append(node('small', 'tl-muted', `${r.message_id ? `${t('reply')} #${r.reply_number} · ${t('candidate')} ${(r.swipe_index ?? 0) + 1}` : t('unlinked')} · ${t(r.kind)}`));
         heading.append(identity, node('strong', '', usd(r.cost)));
-        item.append(heading, node('div', 'tl-muted', `${new Date(r.timestamp).toLocaleString(lang)} · ${r.model || '—'}`),
+        item.append(heading, node('div', 'tl-muted', `${new Date(r.timestamp).toLocaleString(lang)} · ${t(r.provider || 'openrouter')} · ${r.model || '—'}`),
             node('div', '', `${r.message_id ? `${t('reply')} #${r.reply_number} · ${t('candidate')} ${(r.swipe_index ?? 0) + 1}` : t('unlinked')} · ${t(r.kind)} · ${t(r.status)}`),
             node('div', '', `${t('input')} ${r.input_tokens ?? '—'} / ${t('output')} ${r.output_tokens ?? '—'} · ${t(r.cost_source)}`));
         const actions = node('div', 'tl-actions');
@@ -298,6 +306,11 @@ function start() {
             importInput.value = '';
         });
         panel.append(button(t('import'), () => importInput.click()), importInput);
+        const creditLabel = node('label', '', t('vertexCredit'));
+        const credit = node('input', 'text_pole'); credit.type = 'number'; credit.min = '0'; credit.step = '0.01';
+        credit.value = String(c.extensionSettings[NAME].vertexCredit ?? 300);
+        credit.addEventListener('change', () => { const value = Number(credit.value); if (Number.isFinite(value) && value >= 0) { c.extensionSettings[NAME].vertexCredit = value; c.saveSettingsDebounced(); render(); } });
+        creditLabel.append(credit); panel.append(creditLabel, node('p', 'tl-muted', t('vertexCreditHelp')));
         (document.getElementById('extensions_settings2') || document.getElementById('extensions_settings')).append(panel);
         buildFloat();
     }

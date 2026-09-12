@@ -1,4 +1,4 @@
-# Tavern Ledger · 酒館帳本 v0.2.0
+# Tavern Ledger · 酒館帳本 v0.3.0
 繁體中文（台灣）／English。SillyTavern 單一前端擴充，**不需要 Server Plugin，不需修改 config.yaml，也不需 npm install**。
 
 ## 安裝
@@ -11,7 +11,8 @@ ST → 擴充功能 → 安裝擴充功能 → 貼上 https://github.com/mimi105
 ## 操作
 - 點右下方「酒館帳本」懸浮按鈕展開介面，按關閉或 Escape 收合。
 - ST 擴充設定可切換繁體中文／English，也可關閉懸浮按鈕。
-- 使用 Chat Completion → OpenRouter。串流與非串流皆記錄回應中的官方 tokens／cost。
+- 使用 Chat Completion → OpenRouter 或 Vertex AI。串流與非串流皆記錄回應中的 Token 用量。
+- OpenRouter 使用回應中的官方 cost；Vertex AI 依回傳的 usageMetadata 與內建官方單價表估算每次費用。目前支援 Gemini 2.5 Pro、2.5 Flash、2.5 Flash-Lite，其他模型顯示「待確認」。
 - 保留角色、聊天室、生成時 AI 回覆編號、候選識別、時間、模型、滑動與續寫明細。
 - 續寫累加到同一候選，可展開看續寫 1、續寫 2 等費用；重抽候選分別計算。
 - 刪除回覆不會刪除帳本。分支／複製聊天歷史不會新增費用。
@@ -36,13 +37,20 @@ Railway 需持久化 ST 實際使用的資料目錄（Volume）；帳本跟其�
 - 不要求輸入第二把 Key、不讀取完整 Key、不保存提示詞或聊天全文。
 - 本版不是 0.1 所有查詢能力的等價替代；單一連結安裝已完成架構調整，完整官方 Key 查詢仍有能力缺口。
 
+## Vertex AI 與 Google Cloud 抵免額
+- 擴充設定的「Vertex AI 初始抵免額」預設 US$300，可改成帳戶實際取得的金額。
+- 帳本顯示「初始抵免額 − 本帳本 Vertex AI 記錄支出」；它是非即時估算，不是 Google Cloud 官方餘額。
+- Google 沒有讓單一 ST 前端擴充直接讀取促銷抵免餘額的簡單端點。其他 Google Cloud 服務、安裝前用量、其他專案與帳務調整不會包含在估算中。
+- Google Cloud Console 的 Billing → Credits 才是官方餘額；帳務資料本身也可能延遲。
+- Vertex 價格可能調整。無法確定模型單價或取得 Token 用量時保留「待確認」，不當成零元。
+
 ## 舊版資料
 已使用 0.1 者，先用舊版匯出 JSON，再於新版擴充設定按「匯入帳本 JSON」。相同紀錄 ID 合併，不重複記帳。
 原本伺服器的 tavern-ledger/v1/ 紀錄及 0.1 ZIP 不會被自動刪除或改寫。
 匯入功能接受本專案匯出的 version 1／2 格式。
 
 ## 測試與已知範圍
-- 單一 ST 使用者、直接 OpenRouter Chat Completion。群组／多候選批次／工具背景請求不保證可靠回覆關聯；Text Completion、圖片、自訂代理不支援。
+- 單一 ST 使用者、直接 OpenRouter／Vertex AI Chat Completion。群组／多候選批次／工具背景請求不保證可靠回覆關聯；Text Completion、圖片、自訂代理不支援。
 - 無歷史費用回填，無自動估算。帳本全量讀寫，適合個人小型使用，尚未針對大型資料最佳化。
 - 網路或儲存失敗時會提示；保持分頁開啟並重新整理以重試。關閉分頁可能失去未保存更新。
 - 尚未在真實 ST／Railway／OR 付費 API 驗收。
@@ -57,7 +65,9 @@ Records live in the current ST user's files/tavern-ledger-v2.json using ST's exi
 
 Designed for alternating devices, not simultaneous writers: same-page writes are serialized and updates merge the latest file, but ST's file API provides no cross-device transaction lock. Concurrent generation/import on two devices can overwrite updates.
 
-Features: streamed/non-streamed OpenRouter costs/tokens, character/chat/reply/candidate links, continuation details, all-candidate totals, reply navigation, period totals, search, JSON export/import. Deleting a message retains its cost; copied history is not billed again. Reply navigation does not change the selected candidate. Renaming/deleting/unrendered messages may prevent navigation.
+Features: streamed/non-streamed OpenRouter provider costs and Vertex AI token-based estimates, character/chat/reply/candidate links, continuation details, all-candidate totals, reply navigation, period totals, search, JSON export/import. Deleting a message retains its cost; copied history is not billed again. Reply navigation does not change the selected candidate. Renaming/deleting/unrendered messages may prevent navigation.
+
+Vertex AI estimates support Gemini 2.5 Pro, 2.5 Flash and 2.5 Flash-Lite. The displayed Vertex balance is the configured initial credit (US$300 by default) minus Vertex spend recorded by this ledger. It is explicitly labeled as a non-live estimate; it does not include other Google Cloud usage or billing adjustments. Check Google Cloud Console → Billing → Credits for the official delayed balance.
 
 Account balance uses ST's built-in credits endpoint and may fail due to version/permissions. **Individual-key allowance, official key usage periods and generation-cost rechecks from v0.1 are unavailable in v0.2.** The interface explains these gaps. Ledger totals are local recorded spend, not all key activity. Missing cost remains unconfirmed. No raw keys or conversation content are stored.
 
