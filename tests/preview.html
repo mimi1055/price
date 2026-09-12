@@ -1,0 +1,33 @@
+<!doctype html><html lang="zh-TW"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tavern Ledger — simulated ST integration</title><link rel="stylesheet" href="/style.css">
+<style>body{background:#171b18;color:#e9e9df;font:16px system-ui;max-width:1000px;margin:30px auto;padding:16px}button,select,input{font:inherit;padding:8px}#chat{padding:24px;background:#242c25;border-radius:12px;margin:20px 0}.mes{padding:15px}.mes_text{line-height:1.8}</style>
+<h1>Tavern Ledger · 測試酒館</h1><p>模擬資料 · Simulated data — no API key or paid requests</p>
+<button id="normal">模擬串流回覆</button> <button id="continue">模擬續寫</button> <button id="swipe">模擬滑動重抽</button> <button id="nonstream">模擬非串流回覆</button> <button id="delete">刪除最後回覆</button>
+<div id="chat"></div><div id="extensions_settings2"></div>
+<script>
+const listeners = new Map();
+const events = ['GENERATION_STARTED','GENERATION_ENDED','MESSAGE_RECEIVED','CHARACTER_MESSAGE_RENDERED','MESSAGE_SWIPED','MESSAGE_DELETED','CHAT_CHANGED'];
+const ctx = { chat: [], characters: [{ name: 'Ghost', avatar: 'ghost.png', chat: '主線劇情' }], characterId: 0, chatId: '主線劇情', groupId: null,
+ extensionSettings: { tavern_ledger: { language: 'zh-TW' } }, getRequestHeaders: () => ({ 'content-type': 'application/json' }),
+ eventTypes: Object.fromEntries(events.map(x => [x,x])), eventSource: { on: (name, fn) => { if (!listeners.has(name)) listeners.set(name, []); listeners.get(name).push(fn); } },
+ saveChat: async () => {}, saveSettingsDebounced: () => {}, selectCharacterById: async () => {}, openCharacterChat: async () => {} };
+window.SillyTavern = { getContext: () => ctx }; window.toastr = { warning: text => { document.getElementById('notice').textContent = text; } };
+async function emit(name, ...args) { for (const fn of listeners.get(name) || []) await fn(...args); }
+function paint() { const chat = document.getElementById('chat'); chat.replaceChildren(); ctx.chat.forEach((m,i) => {
+ const el = document.createElement('div'); el.className = 'mes'; el.setAttribute('mesid', i);
+ const block = document.createElement('div'); block.className = 'mes_block'; const text = document.createElement('div'); text.className = 'mes_text'; text.textContent = m.mes;
+ block.append(text); el.append(block); chat.append(el); }); }
+async function generate(kind, stream = true) {
+ await emit('GENERATION_STARTED', kind, {}, false);
+ const res = await fetch('/api/backends/chat-completions/generate', { method: 'POST', body: JSON.stringify({ chat_completion_source:'openrouter',model:'anthropic/demo-model',stream }) });
+ await res.text();
+ let m = ctx.chat.at(-1);
+ if (kind === 'normal' || !m) { m = { mes:'夜色落在酒館的窗沿。Ghost 抬起頭：「你好，旅人。」', extra:{}, swipe_id:0, swipe_info:[{extra:{}}] }; ctx.chat.push(m); }
+ else if (kind === 'continue') m.mes += ' 他將一杯溫熱的茶推到你面前。';
+ else { m.swipe_id++; m.swipe_info.push({extra:{}}); m.mes='Ghost 微微頷首：「今晚想聽什麼故事？」'; }
+ await emit('MESSAGE_RECEIVED', ctx.chat.length - 1, kind); paint(); await emit('CHARACTER_MESSAGE_RENDERED'); await emit('GENERATION_ENDED');
+}
+for (const kind of ['normal','continue','swipe']) document.getElementById(kind).onclick = () => generate(kind);
+document.getElementById('nonstream').onclick = () => generate('normal', false);
+document.getElementById('delete').onclick = async () => { ctx.chat.pop(); paint(); await emit('MESSAGE_DELETED'); };
+</script><p id="notice" role="status"></p><script type="module" src="/index.js"></script></html>

@@ -1,0 +1,314 @@
+import { money, readUsage, summarize, usageFrom } from './lib/core.mjs';
+import { locales } from './locales.mjs';
+import { STFileLedger } from './lib/st-storage.mjs';
+
+const NAME = 'tavern_ledger';
+const context = () => SillyTavern.getContext();
+const originalFetch = window.fetch.bind(window);
+const storage = new STFileLedger(originalFetch, () => context().getRequestHeaders());
+let rows = [], snapshot = null, connected = false, run = null, dialog = null, filter = '';
+const unsaved = new Map();
+const writes = new Map();
+const expandedRows = new Set();
+const liveRequests = new Set();
+let lang = 'zh-TW';
+const t = key => locales[lang][key] || key;
+const usd = n => money(n) === null ? t('unknown') : `US$${n.toFixed(5).replace(/0+$/, '').replace(/\.$/, '.00')}`;
+function node(tag, cls, text) {
+    const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n;
+}
+function button(text, fn) { const b = node('button', 'menu_button tl-button', text); b.type = 'button'; b.addEventListener('click', fn); return b; }
+function warn(key) { globalThis.toastr?.warning(t(key), t('title')); }
+async function api(route, body) {
+    if (route === '/records') return storage.read();
+    if (route === '/begin') {
+        const row = { ...body, timestamp: new Date().toISOString(), schema_version: 2, provider: 'openrouter',
+            cost: null, input_tokens: null, output_tokens: null, currency: 'USD', cost_source: 'unknown', status: 'pending' };
+        await storage.update([row]); return row;
+    }
+    if (route === '/record') { await storage.update([body]); return body; }
+    if (route === '/snapshot') {
+        const result = await storage.post('/api/openrouter/credits', {});
+        if (typeof result.remaining !== 'number' || !Number.isFinite(result.remaining)) throw new Error('Invalid balance');
+        return { balance: result.remaining, total_used: money(result.total_usage), timestamp: new Date().toISOString() };
+    }
+    throw new Error('Unsupported operation');
+}
+function remember(row) { const i = rows.findIndex(x => x.id === row.id); if (i < 0) rows.unshift(row); else rows[i] = row; }
+function persist(row) {
+    // Serialize full snapshots per request so a late response cannot overwrite its message link.
+    const data = { ...row };
+    const next = (writes.get(row.id) || Promise.resolve()).catch(() => {}).then(async () => {
+        try { await api('/record', data); unsaved.delete(row.id); }
+        catch { unsaved.set(row.id, { ...row }); warn('saveError'); }
+    });
+    writes.set(row.id, next);
+    void next.finally(() => { if (writes.get(row.id) === next) writes.delete(row.id); });
+    remember(row);
+    return next;
+}
+function chatIdentity(c) {
+    const character = c.characters[c.characterId];
+    return { character: character?.name || '', character_id: character?.avatar || '',
+        chat_name: String(c.chatId || ''), chat_id: JSON.stringify([character?.avatar || '', c.groupId || '', c.chatId || '']) };
+}
+
+function installCollector() {
+    const c = context(), on = (name, fn) => { if (c.eventTypes[name]) c.eventSource.on(c.eventTypes[name], fn); };
+    on('GENERATION_STARTED', (type, _options, dryRun) => {
+        if (dryRun) return;
+        run = { kind: type === 'continue' ? 'continue' : type === 'swipe' ? 'swipe' : type === 'quiet' ? 'quiet' : 'normal',
+            chat: context().chat, identity: chatIdentity(context()), records: [] };
+    });
+    on('GENERATION_ENDED', () => { run = null; });
+    on('MESSAGE_RECEIVED', async (index, type) => {
+        const active = run, c = context();
+        if (!active || active.chat !== c.chat || active.kind === 'quiet' || type === 'first_message') return;
+        const records = active.records.filter(r => !r.message_id);
+        const message = c.chat[index];
+        if (!message || message.is_user || !records.length) return;
+        message.tavern_ledger_id ||= crypto.randomUUID();
+        message.extra ||= {};
+        const previous = message.extra[NAME];
+        const candidateId = active.kind === 'continue' && previous?.candidate_id ? previous.candidate_id : crypto.randomUUID();
+        message.extra[NAME] = { candidate_id: candidateId };
+        if (message.swipe_info?.[message.swipe_id]) {
+            message.swipe_info[message.swipe_id].extra ||= {};
+            message.swipe_info[message.swipe_id].extra[NAME] = { candidate_id: candidateId };
+        }
+        for (const row of records) {
+            Object.assign(row, { message_id: message.tavern_ledger_id, candidate_id: candidateId,
+                reply_number: c.chat.slice(0, Number(index) + 1).filter(m => !m.is_user && !m.is_system).length,
+                swipe_index: message.swipe_id || 0 });
+            void persist(row);
+        }
+        try { await c.saveChat(); } catch { warn('saveError'); }
+        paintBadges(); render();
+    });
+    for (const event of ['CHARACTER_MESSAGE_RENDERED', 'MESSAGE_SWIPED', 'MESSAGE_DELETED', 'CHAT_CHANGED']) {
+        on(event, () => { paintBadges(); if (event === 'CHAT_CHANGED') void refresh(); });
+    }
+    // ST discards the raw usage object before its message events. Observe a clone only:
+    // preserve the original request, response, status, stream and abort behavior.
+    window.fetch = async function (input, options) {
+        let body;
+        const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+        try { body = typeof options?.body === 'string' ? JSON.parse(options.body) : null; } catch { /* Not JSON */ }
+        const endpoint = new URL(url, location.href);
+        if (endpoint.origin !== location.origin || endpoint.pathname !== '/api/backends/chat-completions/generate'
+            || body?.chat_completion_source !== 'openrouter' || !connected) return originalFetch(input, options);
+        // Group chats and multi-choice batches need a separate association strategy.
+        const active = run?.chat === context().chat && !context().groupId ? run : null;
+        const row = { id: crypto.randomUUID(), model: body.model, secret_id: typeof body.secret_id === 'string' ? body.secret_id : null,
+            ...(active?.identity || chatIdentity(context())), kind: active?.kind || 'quiet' };
+        try { Object.assign(row, await api('/begin', row)); }
+        catch { warn('saveError'); return originalFetch(input, options); }
+        if (active && !(body.n > 1)) active.records.push(row);
+        liveRequests.add(row.id);
+        remember(row);
+        try {
+            const response = await originalFetch(input, options);
+            const observed = response.clone();
+            void (async () => {
+                try {
+                    if (response.ok) {
+                        await readUsage(observed, data => {
+                            if (typeof data.id === 'string') row.request_id = data.id;
+                            const usage = usageFrom(data);
+                            for (const [key, value] of Object.entries(usage)) {
+                                if (value !== null && !(key === 'cost_source' && value === 'unknown' && row.cost_source === 'provider')) row[key] = value;
+                            }
+                            // Save generation ID early, including interrupted streams.
+                            if (row.request_id && !row.id_saved) { row.id_saved = true; void persist(row); }
+                        });
+                        row.status = 'complete';
+                    } else { row.status = 'failed'; await observed.body?.cancel(); }
+                } catch { row.status = 'interrupted'; }
+                await persist(row); liveRequests.delete(row.id); paintBadges(); render();
+            })();
+            return response;
+        } catch (e) {
+            row.status = e.name === 'AbortError' ? 'interrupted' : 'failed';
+            liveRequests.delete(row.id);
+            void persist(row); throw e;
+        }
+    };
+}
+
+async function refresh() {
+    try {
+        await Promise.all([...unsaved.values()].map(persist));
+        const latest = await api('/records');
+        // Keep pending in-flight row objects; stream observers still hold their references.
+        const local = new Map(rows.filter(r => writes.has(r.id) || unsaved.has(r.id) || liveRequests.has(r.id)).map(r => [r.id, r]));
+        rows = latest.map(r => local.get(r.id) || r);
+        for (const r of local.values()) if (!rows.some(x => x.id === r.id)) rows.push(r);
+        connected = true;
+    } catch { connected = false; }
+    paintBadges(); render();
+    const status = document.getElementById('tl-status'); if (status) status.textContent = t(connected ? 'ready' : 'offline');
+}
+async function sync() {
+    try { snapshot = await api('/snapshot', {}); }
+    catch { snapshot = { unavailable: true, timestamp: new Date().toISOString() }; }
+    render();
+}
+async function locate(row) {
+    try {
+        let c = context();
+        const find = () => context().chat.findIndex(m => m.tavern_ledger_id === row.message_id);
+        if (find() < 0) {
+            const id = c.characters.findIndex(x => x.avatar === row.character_id);
+            if (id < 0 || !row.chat_name) return warn('missing');
+            if (Number(c.characterId) !== id) await c.selectCharacterById(id);
+            await context().openCharacterChat(row.chat_name);
+        }
+        c = context();
+        const index = find();
+        if (index < 0) return warn('missing');
+        const element = document.querySelector(`#chat .mes[mesid="${index}"]`);
+        if (!element) return warn('missing');
+        dialog?.close(); element.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'center' });
+        element.classList.add('tl-highlight'); setTimeout(() => element.classList.remove('tl-highlight'), 2400);
+        // Do not change the selected swipe: the ledger shows the recorded candidate number.
+    } catch { warn('missing'); }
+}
+function paintBadges() {
+    document.querySelectorAll('.tl-badge').forEach(x => x.remove());
+    const c = context();
+    c.chat.forEach((m, index) => {
+        if (!m.tavern_ledger_id) return;
+        const all = rows.filter(r => r.message_id === m.tavern_ledger_id);
+        const candidate = m.extra?.[NAME]?.candidate_id;
+        const selected = all.filter(r => r.candidate_id === candidate);
+        if (!all.length) return;
+        const target = document.querySelector(`#chat .mes[mesid="${index}"] .mes_block`);
+        if (!target) return;
+        const details = node('details', 'tl-badge');
+        const sum = summarize(selected), total = summarize(all);
+        details.append(node('summary', '', `${t('candidate')}: ${usd(sum.total)}${sum.unknown ? ' + ?' : ''} · ${t('continue')} ×${selected.filter(r => r.kind === 'continue').length} · ${t('allCandidates')}: ${usd(total.total)}${total.unknown ? ' + ?' : ''}`));
+        details.append(node('small', '', t('subset')));
+        let continuation = 0;
+        for (const r of [...selected].sort((a, b) => a.timestamp.localeCompare(b.timestamp))) {
+            const label = r.kind === 'continue' ? `${t('continue')} ${++continuation}` : t(r.kind);
+            details.append(node('div', '', `${label} · ${usd(r.cost)} · ${t(r.cost_source)} · ${t('input')} ${r.input_tokens ?? '—'} / ${t('output')} ${r.output_tokens ?? '—'}`));
+        }
+        target.append(details);
+    });
+}
+function render() {
+    if (!dialog?.open) return;
+    // Polling must not collapse details or interrupt typing in the search field.
+    if (document.activeElement?.classList.contains('tl-search')) return;
+    const content = dialog.querySelector('.tl-content'); content.replaceChildren();
+    if (!connected) content.append(node('p', 'tl-warning', t('offline')));
+    if (unsaved.size) content.append(node('p', 'tl-warning', t('saveError')));
+    const sum = summarize(rows), cards = node('div', 'tl-cards');
+    for (const key of ['today', 'week', 'month', 'total']) {
+        const card = node('div', 'tl-card'); card.append(node('small', '', t(key)), node('strong', '', usd(sum[key]))); cards.append(card);
+    }
+    content.append(cards);
+    const current = rows.filter(r => r.chat_id === chatIdentity(context()).chat_id);
+    content.append(node('p', 'tl-muted', `${t('localChat')}: ${usd(summarize(current).total)} · ${sum.unknown} ${t('unknownCount')}`));
+    const account = node('section', 'tl-account'); account.append(node('h3', '', t('account')), button(t('sync'), sync));
+    if (snapshot) {
+        for (const [key, value] of [['balance', snapshot.unavailable ? t('unavailable') : `US$${snapshot.balance.toFixed(4)}`],
+            ['accountUsed', usd(snapshot.total_used)],
+            ['lastSync', new Date(snapshot.timestamp).toLocaleString(lang)]]) {
+            account.append(node('div', 'tl-account-row', `${t(key)}: ${value}`));
+        }
+    }
+    account.append(node('p', 'tl-muted', t('queryLimit')));
+    content.append(account, node('p', 'tl-muted', t('coverage')), node('p', 'tl-muted', t('timezone')));
+    const search = node('input', 'text_pole tl-search'); search.placeholder = t('filter'); search.setAttribute('aria-label', t('filter')); search.value = filter;
+    search.addEventListener('input', () => { filter = search.value; renderList(list); });
+    const list = node('div', 'tl-list'); content.append(search, list); renderList(list);
+}
+function renderList(list) {
+    list.replaceChildren();
+    const filtered = rows.filter(r => [r.character, r.chat_name, r.model].join(' ').toLowerCase().includes(filter.toLowerCase()));
+    if (!filtered.length) list.append(node('p', 'tl-muted', t('empty')));
+    for (const r of filtered.slice(0, 500)) {
+        const item = node('details', 'tl-row'), heading = node('summary', '');
+        item.open = expandedRows.has(r.id);
+        item.addEventListener('toggle', () => {
+            if (!item.isConnected) return;
+            if (item.open) expandedRows.add(r.id); else expandedRows.delete(r.id);
+        });
+        const identity = node('span', 'tl-identity', `${r.character || '—'} / ${r.chat_name || '—'}`);
+        identity.append(node('small', 'tl-muted', `${r.message_id ? `${t('reply')} #${r.reply_number} · ${t('candidate')} ${(r.swipe_index ?? 0) + 1}` : t('unlinked')} · ${t(r.kind)}`));
+        heading.append(identity, node('strong', '', usd(r.cost)));
+        item.append(heading, node('div', 'tl-muted', `${new Date(r.timestamp).toLocaleString(lang)} · ${r.model || '—'}`),
+            node('div', '', `${r.message_id ? `${t('reply')} #${r.reply_number} · ${t('candidate')} ${(r.swipe_index ?? 0) + 1}` : t('unlinked')} · ${t(r.kind)} · ${t(r.status)}`),
+            node('div', '', `${t('input')} ${r.input_tokens ?? '—'} / ${t('output')} ${r.output_tokens ?? '—'} · ${t(r.cost_source)}`));
+        const actions = node('div', 'tl-actions');
+        if (r.message_id) actions.append(button(t('locate'), () => locate(r)));
+        if (r.cost === null) item.append(node('small', 'tl-muted', t('costLimit')));
+        item.append(actions); list.append(item);
+    }
+    if (filtered.length > 500) list.append(node('p', 'tl-muted', `${Math.min(500, filtered.length)} / ${filtered.length}`));
+}
+function open() {
+    if (!dialog) {
+        dialog = node('dialog', 'tl-dialog'); dialog.setAttribute('aria-label', 'Tavern Ledger');
+        const header = node('header', 'tl-header'); header.append(node('h2', '', 'Tavern Ledger'));
+        const toolbar = node('div', 'tl-actions');
+        toolbar.append(button(t('refresh'), refresh), button(t('export'), () => {
+            const url = URL.createObjectURL(new Blob([JSON.stringify({ version: 2, records: rows }, null, 2)], { type: 'application/json' }));
+            const a = node('a'); a.href = url; a.download = `tavern-ledger-${new Date().toISOString().slice(0, 10)}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }), button(t('close'), () => dialog.close()));
+        header.append(toolbar); dialog.append(header, node('main', 'tl-content')); document.body.append(dialog);
+    }
+    if (!dialog.open) dialog.showModal(); render(); void refresh();
+    if (!snapshot) void sync();
+}
+function start() {
+    const c = context();
+    c.extensionSettings[NAME] ||= {};
+    lang = c.extensionSettings[NAME].language || (navigator.language.toLowerCase().startsWith('zh') ? 'zh-TW' : 'en');
+    if (!locales[lang]) lang = 'en';
+    const panel = node('div', 'tl-settings'); panel.append(node('h3', '', 'Tavern Ledger · 酒館帳本'));
+    const label = node('label', '', t('language'));
+    const select = node('select', 'text_pole'); select.setAttribute('aria-label', t('language'));
+    for (const [value, text] of [['zh-TW', '繁體中文（台灣）'], ['en', 'English']]) {
+        const option = node('option', '', text); option.value = value; select.append(option);
+    }
+    select.value = lang;
+    select.addEventListener('change', () => {
+        lang = select.value; c.extensionSettings[NAME].language = lang; c.saveSettingsDebounced();
+        panel.remove(); dialog?.remove(); dialog = null; buildPanel(); paintBadges();
+    });
+    function buildPanel() {
+        label.firstChild.textContent = t('language');
+        select.setAttribute('aria-label', t('language'));
+        panel.replaceChildren(node('h3', '', 'Tavern Ledger · 酒館帳本'), label, button(t('open'), open));
+        const status = node('p', 'tl-muted', t(connected ? 'ready' : 'offline')); status.id = 'tl-status'; panel.append(status);
+        const toggleLabel = node('label', 'tl-toggle');
+        const toggle = node('input'); toggle.type = 'checkbox'; toggle.checked = c.extensionSettings[NAME].floating !== false;
+        toggle.addEventListener('change', () => { c.extensionSettings[NAME].floating = toggle.checked; c.saveSettingsDebounced(); buildFloat(); });
+        toggleLabel.append(toggle, document.createTextNode(t('floating'))); panel.append(toggleLabel);
+        const importInput = node('input'); importInput.type = 'file'; importInput.accept = '.json'; importInput.hidden = true;
+        importInput.addEventListener('change', async () => {
+            try {
+                const file = importInput.files[0]; if (!file) return;
+                const data = JSON.parse(await file.text());
+                if (![1, 2].includes(data.version) || !Array.isArray(data.records)) throw new Error('Unsupported export');
+                await storage.update(data.records); await refresh();
+            } catch { warn('error'); }
+            importInput.value = '';
+        });
+        panel.append(button(t('import'), () => importInput.click()), importInput);
+        (document.getElementById('extensions_settings2') || document.getElementById('extensions_settings')).append(panel);
+        buildFloat();
+    }
+    function buildFloat() {
+        document.getElementById('tl-float')?.remove();
+        if (c.extensionSettings[NAME].floating === false) return;
+        const floating = button(`◈ ${t('title')}`, () => { if (dialog?.open) dialog.close(); else open(); });
+        floating.id = 'tl-float'; floating.setAttribute('aria-label', t('open')); document.body.append(floating);
+    }
+    label.append(select); buildPanel(); installCollector(); void refresh();
+    setInterval(() => { if (!document.hidden && dialog?.open) void refresh(); }, 15000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) void refresh(); });
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();

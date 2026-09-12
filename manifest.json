@@ -1,0 +1,11 @@
+{
+  "display_name": "Tavern Ledger · 酒館帳本",
+  "loading_order": 50,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Tavern Ledger contributors",
+  "version": "0.2.0",
+  "homePage": "https://github.com/mimi1055/price"
+}

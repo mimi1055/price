@@ -1,0 +1,5 @@
+.research/
+.codex-remote-attachments/
+node_modules/
+dist/
+*.tmp
