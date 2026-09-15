@@ -3,6 +3,7 @@ import { locales } from './locales.mjs';
 import { STFileLedger } from './lib/st-storage.mjs';
 
 const NAME = 'tavern_ledger';
+const SUPPORTED_PROVIDERS = new Set(['openrouter']);
 const context = () => SillyTavern.getContext();
 const originalFetch = window.fetch.bind(window);
 const storage = new STFileLedger(originalFetch, () => context().getRequestHeaders());
@@ -13,6 +14,7 @@ const expandedRows = new Set();
 const liveRequests = new Set();
 let lang = 'zh-TW';
 const t = key => locales[lang][key] || key;
+const visibleRows = () => rows.filter(r => SUPPORTED_PROVIDERS.has(r.provider || 'openrouter'));
 const usd = n => money(n) === null ? t('unknown') : `US$${n.toFixed(5).replace(/0+$/, '').replace(/\.$/, '.00')}`;
 function node(tag, cls, text) {
     const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n;
@@ -97,7 +99,7 @@ function installCollector() {
         const endpoint = new URL(url, location.href);
         const provider = body?.chat_completion_source;
         if (endpoint.origin !== location.origin || endpoint.pathname !== '/api/backends/chat-completions/generate'
-            || !['openrouter', 'vertexai'].includes(provider) || !connected) return originalFetch(input, options);
+            || !SUPPORTED_PROVIDERS.has(provider) || !connected) return originalFetch(input, options);
         // Group chats and multi-choice batches need a separate association strategy.
         const active = run?.chat === context().chat && !context().groupId ? run : null;
         const row = { id: crypto.randomUUID(), provider, model: body.model, secret_id: typeof body.secret_id === 'string' ? body.secret_id : null,
@@ -115,7 +117,7 @@ function installCollector() {
                     if (response.ok) {
                         await readUsage(observed, data => {
                             if (typeof data.id === 'string') row.request_id = data.id;
-                            const usage = usageFrom(data, provider, row.model);
+                            const usage = usageFrom(data, provider);
                             for (const [key, value] of Object.entries(usage)) {
                                 if (value !== null && !(key === 'cost_source' && value === 'unknown' && row.cost_source === 'provider')) row[key] = value;
                             }
@@ -179,7 +181,7 @@ function paintBadges() {
     const c = context();
     c.chat.forEach((m, index) => {
         if (!m.tavern_ledger_id) return;
-        const all = rows.filter(r => r.message_id === m.tavern_ledger_id);
+        const all = visibleRows().filter(r => r.message_id === m.tavern_ledger_id);
         const candidate = m.extra?.[NAME]?.candidate_id;
         const selected = all.filter(r => r.candidate_id === candidate);
         if (!all.length) return;
@@ -204,12 +206,13 @@ function render() {
     const content = dialog.querySelector('.tl-content'); content.replaceChildren();
     if (!connected) content.append(node('p', 'tl-warning', t('offline')));
     if (unsaved.size) content.append(node('p', 'tl-warning', t('saveError')));
-    const sum = summarize(rows), cards = node('div', 'tl-cards');
+    const shownRows = visibleRows();
+    const sum = summarize(shownRows), cards = node('div', 'tl-cards');
     for (const key of ['today', 'week', 'month', 'total']) {
         const card = node('div', 'tl-card'); card.append(node('small', '', t(key)), node('strong', '', usd(sum[key]))); cards.append(card);
     }
     content.append(cards);
-    const current = rows.filter(r => r.chat_id === chatIdentity(context()).chat_id);
+    const current = shownRows.filter(r => r.chat_id === chatIdentity(context()).chat_id);
     content.append(node('p', 'tl-muted', `${t('localChat')}: ${usd(summarize(current).total)} · ${sum.unknown} ${t('unknownCount')}`));
     const account = node('section', 'tl-account'); account.append(node('h3', '', t('account')), button(t('sync'), sync));
     if (snapshot) {
@@ -220,21 +223,14 @@ function render() {
         }
     }
     account.append(node('p', 'tl-muted', t('queryLimit')));
-    const vertexRows = rows.filter(r => r.provider === 'vertexai');
-    const vertexSpend = summarize(vertexRows);
-    const configuredCredit = Number(context().extensionSettings[NAME]?.vertexCredit ?? 300);
-    const vertex = node('section', 'tl-account'); vertex.append(node('h3', '', t('vertexAccount')),
-        node('div', 'tl-account-row', `${t('vertexEstimatedBalance')}: ${usd(Math.max(0, configuredCredit - vertexSpend.total))}`),
-        node('div', 'tl-account-row', `${t('vertexRecordedSpend')}: ${usd(vertexSpend.total)}`),
-        node('p', 'tl-muted', t('vertexBalanceNote')));
-    content.append(account, vertex, node('p', 'tl-muted', t('coverage')), node('p', 'tl-muted', t('timezone')));
+    content.append(account, node('p', 'tl-muted', t('coverage')), node('p', 'tl-muted', t('timezone')));
     const search = node('input', 'text_pole tl-search'); search.placeholder = t('filter'); search.setAttribute('aria-label', t('filter')); search.value = filter;
     search.addEventListener('input', () => { filter = search.value; renderList(list); });
     const list = node('div', 'tl-list'); content.append(search, list); renderList(list);
 }
 function renderList(list) {
     list.replaceChildren();
-    const filtered = rows.filter(r => [r.character, r.chat_name, r.model, r.provider].join(' ').toLowerCase().includes(filter.toLowerCase()));
+    const filtered = visibleRows().filter(r => [r.character, r.chat_name, r.model, r.provider].join(' ').toLowerCase().includes(filter.toLowerCase()));
     if (!filtered.length) list.append(node('p', 'tl-muted', t('empty')));
     for (const r of filtered.slice(0, 500)) {
         const item = node('details', 'tl-row'), heading = node('summary', '');
@@ -306,11 +302,6 @@ function start() {
             importInput.value = '';
         });
         panel.append(button(t('import'), () => importInput.click()), importInput);
-        const creditLabel = node('label', '', t('vertexCredit'));
-        const credit = node('input', 'text_pole'); credit.type = 'number'; credit.min = '0'; credit.step = '0.01';
-        credit.value = String(c.extensionSettings[NAME].vertexCredit ?? 300);
-        credit.addEventListener('change', () => { const value = Number(credit.value); if (Number.isFinite(value) && value >= 0) { c.extensionSettings[NAME].vertexCredit = value; c.saveSettingsDebounced(); render(); } });
-        creditLabel.append(credit); panel.append(creditLabel, node('p', 'tl-muted', t('vertexCreditHelp')));
         (document.getElementById('extensions_settings2') || document.getElementById('extensions_settings')).append(panel);
         buildFloat();
     }

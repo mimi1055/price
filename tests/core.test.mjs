@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { estimateVertexCost, readUsage, summarize, usageFrom } from '../lib/core.mjs';
+import { readUsage, summarize, usageFrom } from '../lib/core.mjs';
 import { LedgerStore } from '../server/store.mjs';
 import { OpenRouterProvider } from '../server/openrouter.mjs';
 import { locales } from '../locales.mjs';
@@ -24,14 +24,8 @@ test('non-stream JSON and zero-cost generations remain official; unknown never b
     assert.equal(usageFrom({ usage: {} }).cost, null);
 });
 
-test('Vertex usage metadata produces a model-rate estimate with cache and thinking tokens', () => {
-    const metadata = { promptTokenCount: 1000, candidatesTokenCount: 500, cachedContentTokenCount: 200, thoughtsTokenCount: 100 };
-    assert.equal(estimateVertexCost('gemini-2.5-pro', metadata), 0.007025);
-    assert.deepEqual(usageFrom({ usageMetadata: metadata }, 'vertexai', 'gemini-2.5-pro'), {
-        cost: 0.007025, input_tokens: 1000, output_tokens: 500, cache_tokens: 200,
-        reasoning_tokens: 100, cost_source: 'estimate',
-    });
-    assert.equal(usageFrom({ usageMetadata: metadata }, 'vertexai', 'unsupported-model').cost, null);
+test('unsupported providers are ignored behind the provider adapter boundary', () => {
+    assert.deepEqual(usageFrom({ usageMetadata: { promptTokenCount: 1000 } }, 'vertexai'), {});
 });
 test('summary counts continuations and discarded candidates, excludes unknown', () => {
     const now = new Date(2026, 8, 12, 12);
