@@ -271,6 +271,13 @@ function open() {
 function start() {
     const c = context();
     c.extensionSettings[NAME] ||= {};
+    // v0.4.5 migration: older previews could leave the floating control disabled
+    // while the settings drawer was collapsed. Re-enable it once; later choices persist.
+    if ((c.extensionSettings[NAME].uiVersion || 0) < 1) {
+        c.extensionSettings[NAME].floating = true;
+        c.extensionSettings[NAME].uiVersion = 1;
+        c.saveSettingsDebounced();
+    }
     lang = c.extensionSettings[NAME].language || (navigator.language.toLowerCase().startsWith('zh') ? 'zh-TW' : 'en');
     if (!locales[lang]) lang = 'en';
     const panel = node('div', 'inline-drawer tl-settings');
@@ -333,7 +340,9 @@ function start() {
     function buildFloat() {
         document.getElementById('tl-float')?.remove();
         if (c.extensionSettings[NAME].floating === false) return;
-        const floating = button(`◈ ${t('title')}`, () => { if (dialog?.open) dialog.close(); else open(); });
+        const floating = node('button', 'tl-button', `◈ ${t('title')}`);
+        floating.type = 'button';
+        floating.addEventListener('click', () => { if (dialog?.open) dialog.close(); else open(); });
         floating.id = 'tl-float'; floating.setAttribute('aria-label', t('open')); document.body.append(floating);
     }
     label.append(select); buildPanel(); installCollector(); void refresh(); void sync();
