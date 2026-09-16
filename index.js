@@ -11,6 +11,7 @@ const storage = new STFileLedger(originalFetch, () => context().getRequestHeader
 let rows = [], snapshot = null, connected = false, run = null, dialog = null, filter = '';
 let updateSettingsBalance = () => {};
 let syncInFlight = null;
+let balanceFollowupTimer = null;
 const unsaved = new Map();
 const writes = new Map();
 const expandedRows = new Set();
@@ -156,6 +157,7 @@ function installCollector() {
                         row.status = 'complete';
                     } else { row.status = 'failed'; await observed.body?.cancel(); }
                 } catch { row.status = 'interrupted'; }
+                void refreshBalanceAfterGeneration();
                 paintBadges(); render(); await recoverCost(row, before);
                 delete row.isolated; liveRequests.delete(row.id); paintBadges(); render(); await persist(row);
             })();
@@ -163,6 +165,7 @@ function installCollector() {
         } catch (e) {
             row.status = e.name === 'AbortError' ? 'interrupted' : 'failed';
             liveRequests.delete(row.id);
+            void refreshBalanceAfterGeneration();
             void persist(row); throw e;
         }
     };
@@ -190,6 +193,14 @@ async function sync() {
         render();
     })().finally(() => { syncInFlight = null; });
     return syncInFlight;
+}
+async function refreshBalanceAfterGeneration() {
+    // A lookup started before completion may still contain the previous balance.
+    if (syncInFlight) await syncInFlight;
+    void sync();
+    clearTimeout(balanceFollowupTimer);
+    // One bounded follow-up allows for delayed provider accounting; no idle polling.
+    balanceFollowupTimer = setTimeout(() => { void sync(); }, 15000);
 }
 const wait = delay => new Promise(resolve => setTimeout(resolve, delay));
 async function recoverCost(row, before) {
