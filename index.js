@@ -295,23 +295,21 @@ function start() {
         const expanded = c.extensionSettings[NAME].settingsOpen === true;
         const summary = node('div', 'inline-drawer-toggle inline-drawer-header');
         summary.append(node('b', '', 'Tavern Ledger · 酒館帳本'));
-        const balance = node('span', 'tl-summary-balance');
-        updateSettingsBalance = () => {
-            const value = snapshot
-                ? `${t('balance')}: ${snapshot.unavailable ? t('unavailableShort') : `US$${snapshot.balance.toFixed(4)}`}`
-                : `${t('balance')}: ${t('loading')}`;
-            balance.textContent = value;
-            const floating = document.getElementById('tl-float');
-            if (floating) floating.textContent = `◈ ${t('title')} · ${snapshot?.unavailable ? '—' : snapshot ? `US$${snapshot.balance.toFixed(4)}` : t('loading')}`;
-        };
-        updateSettingsBalance();
-        summary.append(balance);
         const icon = node('div', `inline-drawer-icon fa-solid ${expanded ? 'fa-circle-chevron-up up' : 'fa-circle-chevron-down down'}`);
         icon.setAttribute('aria-hidden', 'true');
         summary.append(icon);
         const body = node('div', 'inline-drawer-content tl-settings-body');
         body.style.display = expanded ? 'block' : 'none';
-        body.append(label, button(t('open'), open));
+        const quickBalance = node('div', 'tl-quick-balance');
+        const balanceValue = node('strong');
+        updateSettingsBalance = () => {
+            balanceValue.textContent = snapshot
+                ? (snapshot.unavailable ? t('unavailableShort') : `US$${snapshot.balance.toFixed(4)}`)
+                : t('loading');
+        };
+        updateSettingsBalance();
+        quickBalance.append(node('span', '', t('balance')), balanceValue, button(t('sync'), sync));
+        body.append(quickBalance, label, button(t('open'), open));
         panel.replaceChildren(summary, body);
         const status = node('p', 'tl-muted', t(connected ? 'ready' : 'offline')); status.id = 'tl-status'; body.append(status);
         const toggleLabel = node('label', 'tl-toggle');
@@ -337,7 +335,6 @@ function start() {
         if (c.extensionSettings[NAME].floating === false) return;
         const floating = button(`◈ ${t('title')}`, () => { if (dialog?.open) dialog.close(); else open(); });
         floating.id = 'tl-float'; floating.setAttribute('aria-label', t('open')); document.body.append(floating);
-        updateSettingsBalance();
     }
     label.append(select); buildPanel(); installCollector(); void refresh(); void sync();
     setInterval(() => { if (!document.hidden && dialog?.open) void refresh(); }, 15000);

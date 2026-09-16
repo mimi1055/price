@@ -1,4 +1,4 @@
-# Tavern Ledger · 酒館帳本 v0.4.3
+# Tavern Ledger · 酒館帳本 v0.4.4
 繁體中文（台灣）／English。SillyTavern 單一前端擴充，**不需要 Server Plugin，不需修改 config.yaml，也不需 npm install**。
 
 ## 安裝
@@ -12,7 +12,7 @@ ST → 擴充功能 → 安裝擴充功能 → 貼上 https://github.com/mimi105
 - 點右下方「酒館帳本」懸浮按鈕展開介面，按「收合」或 Escape 回到懸浮按鈕。
 - ST 擴充設定可切換繁體中文／English，也可關閉懸浮按鈕。
 - ST 擴充設定區使用 SillyTavern 原生的圓形箭頭抽屜，可展開或收合並記住目前狀態。
-- 收合標題列與右下角懸浮按鈕會在進入 ST 時自動查詢並直接顯示 OpenRouter 帳戶餘額；開啟帳本才顯示完整統計與逐則明細。
+- 展開擴充設定後會直接顯示自動查詢的 OpenRouter 帳戶餘額；標題列與右下角懸浮按鈕只顯示名稱，開啟帳本才顯示完整統計與逐則明細。
 - 使用 Chat Completion → OpenRouter。串流與非串流皆記錄回應中的官方 tokens／cost。
 - 保留角色、聊天室、生成時 AI 回覆編號、候選識別、時間、模型、滑動與續寫明細。
 - 續寫累加到同一候選，可展開看續寫 1、續寫 2 等費用；重抽候選分別計算。
