@@ -1,6 +1,6 @@
 export const locales = {
     'zh-TW': {
-        title: '酒館帳本', open: '開啟帳本', refresh: '重新整理', export: '匯出 JSON', close: '關閉',
+        title: '酒館帳本', open: '開啟帳本', refresh: '重新整理', export: '匯出 JSON', close: '收合',
         intro: '記下每次靈感的花費。', total: '已記錄支出', today: '今日', week: '本週', month: '本月',
         account: 'OpenRouter 帳戶', balance: '帳戶餘額', remaining: 'Key 剩餘額度', used: 'Key 累計用量',
         unlimited: '未提供／未設上限', unavailable: '無法取得（可能需要管理金鑰）', sync: '查詢帳戶餘額',
@@ -23,7 +23,7 @@ export const locales = {
         openrouter: 'OpenRouter',
     },
     en: {
-        title: 'Tavern Ledger', open: 'Open ledger', refresh: 'Refresh', export: 'Export JSON', close: 'Close',
+        title: 'Tavern Ledger', open: 'Open ledger', refresh: 'Refresh', export: 'Export JSON', close: 'Minimize',
         intro: 'Keep track of every spark of imagination.', total: 'Recorded spend', today: 'Today', week: 'This week', month: 'This month',
         account: 'OpenRouter account', balance: 'Account balance', remaining: 'Key allowance left', used: 'Key total usage',
         unlimited: 'Unavailable / no limit', unavailable: 'Unavailable (a management key may be required)', sync: 'Check account balance',

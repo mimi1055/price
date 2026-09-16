@@ -271,7 +271,13 @@ function start() {
     c.extensionSettings[NAME] ||= {};
     lang = c.extensionSettings[NAME].language || (navigator.language.toLowerCase().startsWith('zh') ? 'zh-TW' : 'en');
     if (!locales[lang]) lang = 'en';
-    const panel = node('div', 'tl-settings'); panel.append(node('h3', '', 'Tavern Ledger · 酒館帳本'));
+    const panel = node('details', 'tl-settings');
+    panel.open = c.extensionSettings[NAME].settingsOpen === true;
+    panel.addEventListener('toggle', () => {
+        if (!panel.isConnected) return;
+        c.extensionSettings[NAME].settingsOpen = panel.open;
+        c.saveSettingsDebounced();
+    });
     const label = node('label', '', t('language'));
     const select = node('select', 'text_pole'); select.setAttribute('aria-label', t('language'));
     for (const [value, text] of [['zh-TW', '繁體中文（台灣）'], ['en', 'English']]) {
@@ -285,12 +291,15 @@ function start() {
     function buildPanel() {
         label.firstChild.textContent = t('language');
         select.setAttribute('aria-label', t('language'));
-        panel.replaceChildren(node('h3', '', 'Tavern Ledger · 酒館帳本'), label, button(t('open'), open));
-        const status = node('p', 'tl-muted', t(connected ? 'ready' : 'offline')); status.id = 'tl-status'; panel.append(status);
+        const summary = node('summary', 'tl-settings-summary', 'Tavern Ledger · 酒館帳本');
+        const body = node('div', 'tl-settings-body');
+        body.append(label, button(t('open'), open));
+        panel.replaceChildren(summary, body);
+        const status = node('p', 'tl-muted', t(connected ? 'ready' : 'offline')); status.id = 'tl-status'; body.append(status);
         const toggleLabel = node('label', 'tl-toggle');
         const toggle = node('input'); toggle.type = 'checkbox'; toggle.checked = c.extensionSettings[NAME].floating !== false;
         toggle.addEventListener('change', () => { c.extensionSettings[NAME].floating = toggle.checked; c.saveSettingsDebounced(); buildFloat(); });
-        toggleLabel.append(toggle, document.createTextNode(t('floating'))); panel.append(toggleLabel);
+        toggleLabel.append(toggle, document.createTextNode(t('floating'))); body.append(toggleLabel);
         const importInput = node('input'); importInput.type = 'file'; importInput.accept = '.json'; importInput.hidden = true;
         importInput.addEventListener('change', async () => {
             try {
@@ -301,7 +310,7 @@ function start() {
             } catch { warn('error'); }
             importInput.value = '';
         });
-        panel.append(button(t('import'), () => importInput.click()), importInput);
+        body.append(button(t('import'), () => importInput.click()), importInput);
         (document.getElementById('extensions_settings2') || document.getElementById('extensions_settings')).append(panel);
         buildFloat();
     }

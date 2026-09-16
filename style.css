@@ -1,4 +1,9 @@
-.tl-settings { padding: 12px; border: 1px solid var(--SmartThemeBorderColor, #666); border-radius: 10px; margin: 10px 0; }
+.tl-settings { border: 1px solid var(--SmartThemeBorderColor, #666); border-radius: 10px; margin: 10px 0; overflow: hidden; }
+.tl-settings-summary { padding: 12px; cursor: pointer; font-weight: 700; user-select: none; }
+.tl-settings-summary:hover { background: color-mix(in srgb, var(--SmartThemeBodyColor, #fff) 7%, transparent); }
+.tl-settings-summary:focus-visible { outline: 2px solid var(--SmartThemeQuoteColor, #d4b777); outline-offset: -3px; }
+.tl-settings-body { padding: 0 12px 12px; border-top: 1px solid color-mix(in srgb, var(--SmartThemeBorderColor, #666) 45%, transparent); }
+.tl-settings-body > label:first-child { margin-top: 12px; }
 .tl-settings label { display: grid; gap: 6px; margin-bottom: 12px; }
 #tl-float { position: fixed; right: 18px; bottom: max(110px, env(safe-area-inset-bottom)); z-index: 999; border-radius: 24px; padding: 10px 16px; background: #29362e; color: #ecd4a5; border: 1px solid #8c7851; box-shadow: 0 4px 18px #0005; font-size: 14px; }
 .tl-settings .tl-toggle { display: flex; align-items: center; margin-top: 12px; }
