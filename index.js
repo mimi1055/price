@@ -8,6 +8,7 @@ const context = () => SillyTavern.getContext();
 const originalFetch = window.fetch.bind(window);
 const storage = new STFileLedger(originalFetch, () => context().getRequestHeaders());
 let rows = [], snapshot = null, connected = false, run = null, dialog = null, filter = '';
+let updateSettingsBalance = () => {};
 const unsaved = new Map();
 const writes = new Map();
 const expandedRows = new Set();
@@ -154,6 +155,7 @@ async function refresh() {
 async function sync() {
     try { snapshot = await api('/snapshot', {}); }
     catch { snapshot = { unavailable: true, timestamp: new Date().toISOString() }; }
+    updateSettingsBalance();
     render();
 }
 async function locate(row) {
@@ -293,6 +295,17 @@ function start() {
         const expanded = c.extensionSettings[NAME].settingsOpen === true;
         const summary = node('div', 'inline-drawer-toggle inline-drawer-header');
         summary.append(node('b', '', 'Tavern Ledger · 酒館帳本'));
+        const balance = node('span', 'tl-summary-balance');
+        updateSettingsBalance = () => {
+            const value = snapshot
+                ? `${t('balance')}: ${snapshot.unavailable ? t('unavailableShort') : `US$${snapshot.balance.toFixed(4)}`}`
+                : `${t('balance')}: ${t('loading')}`;
+            balance.textContent = value;
+            const floating = document.getElementById('tl-float');
+            if (floating) floating.textContent = `◈ ${t('title')} · ${snapshot?.unavailable ? '—' : snapshot ? `US$${snapshot.balance.toFixed(4)}` : t('loading')}`;
+        };
+        updateSettingsBalance();
+        summary.append(balance);
         const icon = node('div', `inline-drawer-icon fa-solid ${expanded ? 'fa-circle-chevron-up up' : 'fa-circle-chevron-down down'}`);
         icon.setAttribute('aria-hidden', 'true');
         summary.append(icon);
@@ -324,8 +337,9 @@ function start() {
         if (c.extensionSettings[NAME].floating === false) return;
         const floating = button(`◈ ${t('title')}`, () => { if (dialog?.open) dialog.close(); else open(); });
         floating.id = 'tl-float'; floating.setAttribute('aria-label', t('open')); document.body.append(floating);
+        updateSettingsBalance();
     }
-    label.append(select); buildPanel(); installCollector(); void refresh();
+    label.append(select); buildPanel(); installCollector(); void refresh(); void sync();
     setInterval(() => { if (!document.hidden && dialog?.open) void refresh(); }, 15000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) void refresh(); });
 }
