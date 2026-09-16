@@ -3,9 +3,6 @@
 .tl-quick-balance strong { color: var(--SmartThemeQuoteColor, #d4b777); font-size: 1.05em; }
 .tl-quick-balance .tl-button { min-height: 32px; padding: 4px 9px; }
 .tl-settings label { display: grid; gap: 6px; margin-bottom: 12px; }
-#tl-float { display: flex !important; visibility: visible !important; opacity: 1 !important; position: fixed !important; right: 18px !important; bottom: calc(110px + env(safe-area-inset-bottom, 0px)) !important; z-index: 2147483000 !important; align-items: center; justify-content: center; width: auto !important; min-width: 0; min-height: 40px; box-sizing: border-box; border-radius: 24px; padding: 10px 16px; background: #29362e; color: #ecd4a5; border: 1px solid #8c7851; box-shadow: 0 4px 18px #0005; font-size: 14px; line-height: 1.2; white-space: nowrap; cursor: pointer; pointer-events: auto !important; }
-#tl-float:focus-visible { outline: 2px solid #d4b777; outline-offset: 3px; }
-.tl-settings .tl-toggle { display: flex; align-items: center; margin-top: 12px; }
 .tl-dialog { width: min(900px, 94vw); max-height: 88dvh; padding: 0; border: 1px solid #726956; border-radius: 16px; background: #202420; color: #eeeae0; box-shadow: 0 24px 80px #0009; }
 .tl-dialog::backdrop { background: #0009; }
 .tl-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 20px; border-bottom: 1px solid #ffffff20; }

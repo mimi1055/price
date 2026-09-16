@@ -271,13 +271,6 @@ function open() {
 function start() {
     const c = context();
     c.extensionSettings[NAME] ||= {};
-    // v0.4.5 migration: older previews could leave the floating control disabled
-    // while the settings drawer was collapsed. Re-enable it once; later choices persist.
-    if ((c.extensionSettings[NAME].uiVersion || 0) < 1) {
-        c.extensionSettings[NAME].floating = true;
-        c.extensionSettings[NAME].uiVersion = 1;
-        c.saveSettingsDebounced();
-    }
     lang = c.extensionSettings[NAME].language || (navigator.language.toLowerCase().startsWith('zh') ? 'zh-TW' : 'en');
     if (!locales[lang]) lang = 'en';
     const panel = node('div', 'inline-drawer tl-settings');
@@ -319,10 +312,6 @@ function start() {
         body.append(quickBalance, label, button(t('open'), open));
         panel.replaceChildren(summary, body);
         const status = node('p', 'tl-muted', t(connected ? 'ready' : 'offline')); status.id = 'tl-status'; body.append(status);
-        const toggleLabel = node('label', 'tl-toggle');
-        const toggle = node('input'); toggle.type = 'checkbox'; toggle.checked = c.extensionSettings[NAME].floating !== false;
-        toggle.addEventListener('change', () => { c.extensionSettings[NAME].floating = toggle.checked; c.saveSettingsDebounced(); buildFloat(); });
-        toggleLabel.append(toggle, document.createTextNode(t('floating'))); body.append(toggleLabel);
         const importInput = node('input'); importInput.type = 'file'; importInput.accept = '.json'; importInput.hidden = true;
         importInput.addEventListener('change', async () => {
             try {
@@ -335,29 +324,13 @@ function start() {
         });
         body.append(button(t('import'), () => importInput.click()), importInput);
         (document.getElementById('extensions_settings2') || document.getElementById('extensions_settings')).append(panel);
-        buildFloat();
-    }
-    function buildFloat() {
-        document.getElementById('tl-float')?.remove();
-        if (c.extensionSettings[NAME].floating === false) return;
-        // Use an independent control instead of a global ST button class. Some mobile
-        // themes hide or restyle generic buttons outside their expected containers.
-        const floating = node('div', '', `◈ ${t('title')}`);
-        floating.setAttribute('role', 'button');
-        floating.tabIndex = 0;
-        floating.addEventListener('click', () => { if (dialog?.open) dialog.close(); else open(); });
-        floating.addEventListener('keydown', event => {
-            if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); floating.click(); }
-        });
-        floating.id = 'tl-float'; floating.setAttribute('aria-label', t('open')); document.body.append(floating);
     }
     label.append(select); buildPanel(); installCollector(); void refresh(); void sync();
     setInterval(() => {
-        if (c.extensionSettings[NAME].floating !== false && !document.getElementById('tl-float')) buildFloat();
         if (!document.hidden && dialog?.open) void refresh();
-    }, 5000);
+    }, 15000);
     document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) { if (c.extensionSettings[NAME].floating !== false && !document.getElementById('tl-float')) buildFloat(); void refresh(); }
+        if (!document.hidden) void refresh();
     });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();

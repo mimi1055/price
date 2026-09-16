@@ -1,4 +1,4 @@
-# Tavern Ledger · 酒館帳本 v0.4.6
+# Tavern Ledger · 酒館帳本 v0.4.7
 繁體中文（台灣）／English。SillyTavern 單一前端擴充，**不需要 Server Plugin，不需修改 config.yaml，也不需 npm install**。
 
 ## 安裝
@@ -9,10 +9,10 @@ ST → 擴充功能 → 安裝擴充功能 → 貼上 https://github.com/mimi105
 **不要將 v0.2 安裝到 plugins 資料夾。** 舊版 Server Plugin 已不再是執行依賴。
 
 ## 操作
-- 點右下方「酒館帳本」懸浮按鈕展開介面，按「收合」或 Escape 回到懸浮按鈕。
-- ST 擴充設定可切換繁體中文／English，也可關閉懸浮按鈕。
+- 從 ST 擴充設定展開「Tavern Ledger · 酒館帳本」，即可直接查看餘額或開啟完整帳本。
+- ST 擴充設定可切換繁體中文／English。
 - ST 擴充設定區使用 SillyTavern 原生的圓形箭頭抽屜，可展開或收合並記住目前狀態。
-- 展開擴充設定後會直接顯示自動查詢的 OpenRouter 帳戶餘額；標題列與右下角懸浮按鈕只顯示名稱，開啟帳本才顯示完整統計與逐則明細。
+- 展開擴充設定後會直接顯示自動查詢的 OpenRouter 帳戶餘額；開啟帳本才顯示完整統計與逐則明細。此版本不使用懸浮按鈕。
 - 使用 Chat Completion → OpenRouter。串流與非串流皆記錄回應中的官方 tokens／cost。
 - 保留角色、聊天室、生成時 AI 回覆編號、候選識別、時間、模型、滑動與續寫明細。
 - 續寫累加到同一候選，可展開看續寫 1、續寫 2 等費用；重抽候選分別計算。
@@ -52,7 +52,7 @@ Railway 需持久化 ST 實際使用的資料目錄（Volume）；帳本跟其�
 - repository 的 server/ 與部分測試保留供舊版參考，新版 index.js 不呼叫它們，發布 ZIP 不包含後端。
 
 ## English
-A single SillyTavern UI extension with a floating ledger button, Traditional Chinese (Taiwan) and English.
+A single SillyTavern UI extension with Traditional Chinese (Taiwan) and English.
 Install https://github.com/mimi1055/price using ST's Install Extension dialog and refresh. **No Server Plugin, config edit, or npm install is required.**
 
 Records live in the current ST user's files/tavern-ledger-v2.json using ST's existing file API. Phone and desktop connecting to the same ST server/user read the same saved data. Open/refresh the ledger to see updates; no separate cloud-sync service. Persist ST's actual data directory on Railway using a Volume.
