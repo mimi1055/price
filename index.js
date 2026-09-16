@@ -340,13 +340,24 @@ function start() {
     function buildFloat() {
         document.getElementById('tl-float')?.remove();
         if (c.extensionSettings[NAME].floating === false) return;
-        const floating = node('button', 'tl-button', `◈ ${t('title')}`);
-        floating.type = 'button';
+        // Use an independent control instead of a global ST button class. Some mobile
+        // themes hide or restyle generic buttons outside their expected containers.
+        const floating = node('div', '', `◈ ${t('title')}`);
+        floating.setAttribute('role', 'button');
+        floating.tabIndex = 0;
         floating.addEventListener('click', () => { if (dialog?.open) dialog.close(); else open(); });
+        floating.addEventListener('keydown', event => {
+            if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); floating.click(); }
+        });
         floating.id = 'tl-float'; floating.setAttribute('aria-label', t('open')); document.body.append(floating);
     }
     label.append(select); buildPanel(); installCollector(); void refresh(); void sync();
-    setInterval(() => { if (!document.hidden && dialog?.open) void refresh(); }, 15000);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) void refresh(); });
+    setInterval(() => {
+        if (c.extensionSettings[NAME].floating !== false && !document.getElementById('tl-float')) buildFloat();
+        if (!document.hidden && dialog?.open) void refresh();
+    }, 5000);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) { if (c.extensionSettings[NAME].floating !== false && !document.getElementById('tl-float')) buildFloat(); void refresh(); }
+    });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();

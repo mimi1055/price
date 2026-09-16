@@ -1,4 +1,4 @@
-# Tavern Ledger · 酒館帳本 v0.4.5
+# Tavern Ledger · 酒館帳本 v0.4.6
 繁體中文（台灣）／English。SillyTavern 單一前端擴充，**不需要 Server Plugin，不需修改 config.yaml，也不需 npm install**。
 
 ## 安裝
