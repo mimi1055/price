@@ -15,7 +15,7 @@ const unsaved = new Map();
 const writes = new Map();
 const expandedRows = new Set();
 const liveRequests = new Set();
-let lang = 'zh-TW';
+let lang = 'en';
 const t = key => locales[lang][key] || key;
 const visibleRows = () => rows.filter(r => SUPPORTED_PROVIDERS.has(r.provider || 'openrouter'));
 const usd = n => money(n) === null ? t('unknown') : `US$${n.toFixed(5).replace(/0+$/, '').replace(/\.$/, '.00')}`;
@@ -304,7 +304,7 @@ function open() {
 function start() {
     const c = context();
     c.extensionSettings[NAME] ||= {};
-    lang = c.extensionSettings[NAME].language || (navigator.language.toLowerCase().startsWith('zh') ? 'zh-TW' : 'en');
+    lang = c.extensionSettings[NAME].language || 'en';
     if (!locales[lang]) lang = 'en';
     const panel = node('div', 'inline-drawer tl-settings');
     globalThis.$?.(panel).on('inline-drawer-toggle.tavernLedger', () => {
@@ -316,7 +316,7 @@ function start() {
     });
     const label = node('label', '', t('language'));
     const select = node('select', 'text_pole'); select.setAttribute('aria-label', t('language'));
-    for (const [value, text] of [['zh-TW', '繁體中文（台灣）'], ['en', 'English']]) {
+    for (const [value, text] of [['en', 'English'], ['zh-TW', '繁體中文']]) {
         const option = node('option', '', text); option.value = value; select.append(option);
     }
     select.value = lang;
