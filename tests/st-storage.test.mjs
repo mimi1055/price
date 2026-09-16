@@ -18,6 +18,21 @@ function host() {
     } };
 }
 const record = id => ({ id, timestamp: '2026-09-12T12:00:00Z', cost: .03, character: '酒館角色', kind: 'normal' });
+test('imports preserve existing IDs and skip duplicates within the file', async () => {
+    const h = host(), storage = new STFileLedger(h.fetch.bind(h), () => ({}));
+    const pending = storage.update([record('existing')]);
+    const result = await storage.update([
+        { ...record('existing'), cost: 999 }, record('new'), { ...record('new'), cost: 888 },
+    ], { preserveExisting: true });
+    await pending;
+    assert.deepEqual(result, { added: 1, skipped: 2 });
+    const saved = await storage.read();
+    assert.equal(saved.length, 2);
+    assert.ok(saved.every(r => r.cost === .03));
+    const uploads = h.calls.filter(p => p === '/api/files/upload').length;
+    assert.deepEqual(await storage.update([record('existing')], { preserveExisting: true }), { added: 0, skipped: 1 });
+    assert.equal(h.calls.filter(p => p === '/api/files/upload').length, uploads);
+});
 test('phone writes, fresh desktop reads same ST file without browser storage or plugin routes', async () => {
     const h = host();
     const phone = new STFileLedger(h.fetch.bind(h), () => ({}));

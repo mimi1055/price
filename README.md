@@ -1,12 +1,12 @@
-# Tavern Ledger · 酒館帳本 v0.5.0
-繁體中文（台灣）／English。SillyTavern 單一前端擴充，**不需要 Server Plugin，不需修改 config.yaml，也不需 npm install**。
+# Tavern Ledger · 酒館帳本 v1.0.0
+初版。支援繁體中文（台灣）／English，直接透過 SillyTavern 擴充功能安裝即可。
 
 ## 安裝
 ST → 擴充功能 → 安裝擴充功能 → 貼上 https://github.com/mimi1055/price → 安裝 → 重新整理。
 安裝連結：https://github.com/mimi1055/price 。專案根目錄已包含 ST 所需的 manifest.json。
 
-本機測試可將 ZIP 內容放到 ST 的 public/scripts/extensions/third-party/tavern-ledger/，manifest.json 必須直接位於該資料夾。
-**不要將 v0.2 安裝到 plugins 資料夾。** 舊版 Server Plugin 已不再是執行依賴。
+在 ST 設定一般 OpenRouter API Key 即可，無須建立或提供管理 Key。
+**SillyTavern 1.17.0 無法使用餘額查詢功能。**
 
 ## 操作
 - 從 ST 擴充設定展開「Tavern Ledger · 酒館帳本」，即可直接查看餘額或開啟完整帳本。
@@ -17,7 +17,7 @@ ST → 擴充功能 → 安裝擴充功能 → 貼上 https://github.com/mimi105
 - 使用 Chat Completion → OpenRouter。串流與非串流皆記錄回應中的官方 tokens／cost。
 - 保留角色、聊天室、生成時 AI 回覆編號、候選識別、時間、模型、滑動與續寫明細。
 - 續寫累加到同一候選，可展開看續寫 1、續寫 2 等費用；重抽候選分別計算。
-- 刪除回覆不會刪除帳本。分支／複製聊天歷史不會新增費用。
+- 偵測到回覆刪除時標示「已刪除」，保留費用紀錄。先前或其他裝置的刪除不保證能辨識。分支／複製聊天歷史不會新增費用。
 - 查看回覆會定位原訊息，不會自動切換候選。聊天／角色改名、訊息刪除或未載入畫面時可能無法定位。
 - 日／週／月支出、聊天室合計、搜尋、JSON 匯出／匯入；清單顯示前 500 筆，總額與匯出包含所有已載入紀錄。
 
@@ -31,30 +31,27 @@ ST → 擴充功能 → 安裝擴充功能 → 貼上 https://github.com/mimi105
 
 Railway 需持久化 ST 實際使用的資料目錄（Volume）；帳本跟其他 ST 資料一起保存。單一網址不代表重部署時會自動保留未掛載的磁碟。這版不用額外安裝後端。
 
-## OR 查詢範圍：與舊版的差異
+## OpenRouter 費用統計範圍
 - 帳戶餘額與帳戶累計用量：呼叫 ST 內建 /api/openrouter/credits，由 ST 處理 Key。依 ST 版本與 OR 權限可能無法查詢。
 - 每次生成費用：從原回應的 usage.cost 取得，不需要另查。
 - **個別 Key 剩餘額度、官方日／週／月用量、缺失生成費用補查：目前不提供。** ST 沒有現成介面；畫面會說明限制。帳本日／週／月數字只代表本帳本記錄的支出，不能當作 Key 全部用量。
-- 沒取得費用就顯示「待確認」，不當作零、不用餘額差推算每則費用。
+- 未收到官方費用時，會嘗試以生成前後的帳戶用量差額補算；其他地方同時消費或扣款延遲可能影響結果。仍無法取得時顯示「待確認」，不計入合計。
 - 不要求輸入第二把 Key、不讀取完整 Key、不保存提示詞或聊天全文。
-- 本版不是 0.1 所有查詢能力的等價替代；單一連結安裝已完成架構調整，完整官方 Key 查詢仍有能力缺口。
+- 帳戶餘額與帳戶累計用量可能包含其他酒館、裝置及同帳戶其他 Key 的使用。聊天明細顯示本酒館記錄或使用者匯入的請求。
 
-## 舊版資料
-已使用 0.1 者，先用舊版匯出 JSON，再於新版擴充設定按「匯入帳本 JSON」。相同紀錄 ID 合併，不重複記帳。
-原本伺服器的 tavern-ledger/v1/ 紀錄及 0.1 ZIP 不會被自動刪除或改寫。
-匯入功能接受本專案匯出的 version 1／2 格式。
+## 匯出、匯入與隱私
+在帳本按「匯出 JSON」備份；在擴充設定按「匯入帳本 JSON」匯入。
+每次匯入上限 10 MB、20,000 筆。會驗證日期、金額及欄位型別與長度，忽略額外欄位；重複 ID 保留既有紀錄，完成後顯示新增／略過筆數。格式不符時不匯入任何紀錄。
+帳本與匯出檔包含角色名、聊天室名、使用時間、模型與費用，分享前請確認隱私。刪除聊天不會自動刪除帳本歷史資料。
 
 ## 測試與已知範圍
 - 單一 ST 使用者、直接 OpenRouter Chat Completion。群组／多候選批次／工具背景請求不保證可靠回覆關聯；Text Completion、圖片、自訂代理不支援。
-- 無歷史費用回填，無自動估算。帳本全量讀寫，適合個人小型使用，尚未針對大型資料最佳化。
+- 無歷史費用回填。帳本全量讀寫，適合個人小型使用，尚未針對大型資料最佳化。
 - 網路或儲存失敗時會提示；保持分頁開啟並重新整理以重試。關閉分頁可能失去未保存更新。
-- 尚未在真實 ST／Railway／OR 付費 API 驗收。
-- 開發：npm test、npm run check、node tests/preview-server.mjs。預覽 http://127.0.0.1:8787 為模擬資料。
-- repository 的 server/ 與部分測試保留供舊版參考，新版 index.js 不呼叫它們，發布 ZIP 不包含後端。
 
 ## English
-A single SillyTavern UI extension with Traditional Chinese (Taiwan) and English.
-Install https://github.com/mimi1055/price using ST's Install Extension dialog and refresh. **No Server Plugin, config edit, or npm install is required.**
+Version 1.0.0 — initial release. A SillyTavern extension with Traditional Chinese (Taiwan) and English.
+Install https://github.com/mimi1055/price using ST's Install Extension dialog and refresh. Use a standard OpenRouter API key; no management key or additional backend is required. **Account balance lookup is unavailable on SillyTavern 1.17.0.**
 
 Records live in the current ST user's files/tavern-ledger-v2.json using ST's existing file API. Phone and desktop connecting to the same ST server/user read the same saved data. Open/refresh the ledger to see updates; no separate cloud-sync service. Persist ST's actual data directory on Railway using a Volume.
 
@@ -64,7 +61,7 @@ Features: streamed/non-streamed OpenRouter costs/tokens, character/chat/reply/ca
 
 The current release intentionally supports OpenRouter only. Records retain a provider field and usage parsing has a provider boundary so future providers can be added without changing the ledger file format.
 
-Account balance uses ST's built-in credits endpoint and may fail due to version/permissions. **Individual-key allowance, official key usage periods and generation-cost rechecks are currently unavailable.** The interface explains these gaps. Ledger totals are local recorded spend, not all key activity. Missing cost remains unconfirmed. No raw keys or conversation content are stored.
+Account balance and total usage may include other taverns, devices and keys on the same account. **Individual-key allowance, official key usage periods and generation-cost rechecks are currently unavailable.** Ledger totals summarize recorded or imported requests. Missing provider costs may be recovered from account usage differences; overlapping activity or delayed charges may affect accuracy. Costs that remain unconfirmed are excluded. No raw keys or conversation content are stored.
 
-Import v0.1 exports through extension settings; old files are not modified. Direct OpenRouter Chat Completion only; group and multi-choice links are unsupported. Live ST/Railway/OR acceptance testing is still outstanding.
+Imports accept up to 10 MB and 20,000 records, validate fields and discard unknown fields. Duplicate IDs preserve existing records; results report added and skipped counts. Invalid files are rejected before import. Exports contain character/chat names, timestamps, models and costs; review privacy before sharing. Observed message deletions are marked while retaining costs; earlier deletions or deletions on another device may not be detected. Direct OpenRouter Chat Completion only; group and multi-choice links are unsupported.
 

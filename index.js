@@ -1,6 +1,7 @@
 import { costFromSnapshots, money, readUsage, summarize, usageFrom } from './lib/core.mjs';
 import { locales } from './locales.mjs';
 import { STFileLedger } from './lib/st-storage.mjs';
+import { readImportFile } from './lib/import.mjs';
 
 const NAME = 'tavern_ledger';
 const SUPPORTED_PROVIDERS = new Set(['openrouter']);
@@ -60,6 +61,25 @@ function chatIdentity(c) {
 
 function installCollector() {
     const c = context(), on = (name, fn) => { if (c.eventTypes[name]) c.eventSource.on(c.eventTypes[name], fn); };
+    let observedChatId = null, observedMessageIds = new Set();
+    function observeMessages(deleted = false) {
+        const current = context(), chatId = chatIdentity(current).chat_id;
+        const ids = new Set(current.chat.map(m => m.tavern_ledger_id).filter(Boolean));
+        // Only mark IDs actually observed before a deletion in this same chat.
+        // Switching chats or failing to locate a reply is not evidence of deletion.
+        if (deleted && observedChatId === chatId) {
+            for (const row of rows) {
+                if (row.chat_id === chatId && observedMessageIds.has(row.message_id)
+                    && !ids.has(row.message_id) && !row.message_deleted) {
+                    row.message_deleted = true;
+                    void persist(row);
+                }
+            }
+        }
+        observedChatId = chatId;
+        observedMessageIds = ids;
+    }
+    observeMessages();
     on('GENERATION_STARTED', (type, _options, dryRun) => {
         if (dryRun) return;
         run = { kind: type === 'continue' ? 'continue' : type === 'swipe' ? 'swipe' : type === 'quiet' ? 'quiet' : 'normal',
@@ -87,11 +107,16 @@ function installCollector() {
                 swipe_index: message.swipe_id || 0 });
             void persist(row);
         }
+        observeMessages();
         try { await c.saveChat(); } catch { warn('saveError'); }
         paintBadges(); render();
     });
     for (const event of ['CHARACTER_MESSAGE_RENDERED', 'MESSAGE_SWIPED', 'MESSAGE_DELETED', 'CHAT_CHANGED']) {
-        on(event, () => { paintBadges(); if (event === 'CHAT_CHANGED') void refresh(); });
+        on(event, () => {
+            observeMessages(event === 'MESSAGE_DELETED');
+            paintBadges(); render();
+            if (event === 'CHAT_CHANGED') void refresh();
+        });
     }
     // ST discards the raw usage object before its message events. Observe a clone only:
     // preserve the original request, response, status, stream and abort behavior.
@@ -257,6 +282,7 @@ function render() {
             account.append(node('div', 'tl-account-row', `${t(key)}: ${value}`));
         }
     }
+    account.append(node('p', 'tl-muted', t('accountScope')));
     account.append(node('p', 'tl-muted', t('queryLimit')));
     content.append(account, node('p', 'tl-muted', t('coverage')), node('p', 'tl-muted', t('timezone')));
     const search = node('input', 'text_pole tl-search'); search.placeholder = t('filter'); search.setAttribute('aria-label', t('filter')); search.value = filter;
@@ -275,13 +301,14 @@ function renderList(list) {
             if (item.open) expandedRows.add(r.id); else expandedRows.delete(r.id);
         });
         const identity = node('span', 'tl-identity', `${r.character || '—'} / ${r.chat_name || '—'}`);
+        if (r.message_deleted) identity.append(node('small', 'tl-muted', t('deleted')));
         identity.append(node('small', 'tl-muted', `${r.message_id ? `${t('reply')} #${r.reply_number} · ${t('candidate')} ${(r.swipe_index ?? 0) + 1}` : t('unlinked')} · ${t(r.kind)}`));
         heading.append(identity, node('strong', '', usd(r.cost)));
         item.append(heading, node('div', 'tl-muted', `${new Date(r.timestamp).toLocaleString(lang)} · ${t(r.provider || 'openrouter')} · ${r.model || '—'}`),
             node('div', '', `${r.message_id ? `${t('reply')} #${r.reply_number} · ${t('candidate')} ${(r.swipe_index ?? 0) + 1}` : t('unlinked')} · ${t(r.kind)} · ${t(r.status)}`),
             node('div', '', `${t('input')} ${r.input_tokens ?? '—'} / ${t('output')} ${r.output_tokens ?? '—'} · ${t(r.cost_source)}`));
         const actions = node('div', 'tl-actions');
-        if (r.message_id) actions.append(button(t('locate'), () => locate(r)));
+        if (r.message_id && !r.message_deleted) actions.append(button(t('locate'), () => locate(r)));
         if (r.cost === null) item.append(node('small', 'tl-muted', t('costLimit')));
         item.append(actions); list.append(item);
     }
@@ -296,7 +323,7 @@ function open() {
             const url = URL.createObjectURL(new Blob([JSON.stringify({ version: 2, records: rows }, null, 2)], { type: 'application/json' }));
             const a = node('a'); a.href = url; a.download = `tavern-ledger-${new Date().toISOString().slice(0, 10)}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
         }), button(t('close'), () => dialog.close()));
-        header.append(toolbar); dialog.append(header, node('main', 'tl-content')); document.body.append(dialog);
+        header.append(toolbar); dialog.append(header, node('p', 'tl-muted', t('exportPrivacy')), node('main', 'tl-content')); document.body.append(dialog);
     }
     if (!dialog.open) dialog.showModal(); render(); void refresh();
     void sync();
@@ -351,10 +378,13 @@ function start() {
         importInput.addEventListener('change', async () => {
             try {
                 const file = importInput.files[0]; if (!file) return;
-                const data = JSON.parse(await file.text());
-                if (![1, 2].includes(data.version) || !Array.isArray(data.records)) throw new Error('Unsupported export');
-                await storage.update(data.records); await refresh();
-            } catch { warn('error'); }
+                const records = await readImportFile(file);
+                const result = await storage.update(records, { preserveExisting: true });
+                await refresh();
+                globalThis.toastr?.success(t('importResult').replace('{added}', result.added).replace('{skipped}', result.skipped), t('title'));
+            } catch (error) {
+                warn(['importInvalid', 'importTooLarge', 'importTooMany'].includes(error.message) ? error.message : 'error');
+            }
             importInput.value = '';
         });
         body.append(button(t('import'), () => importInput.click()), importInput);
