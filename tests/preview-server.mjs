@@ -8,7 +8,7 @@ let ledgerFile = null;
 http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     try {
-        if (url.pathname === '/files/tavern-ledger-v2.json') {
+        if (url.pathname === '/user/files/tavern-ledger-v2.json') {
             res.setHeader('content-type', 'application/json');
             if (!ledgerFile) { res.statusCode = 404; return res.end('{}'); }
             return res.end(ledgerFile);
@@ -18,10 +18,10 @@ http.createServer(async (req, res) => {
             const b = body ? JSON.parse(body) : {};
             res.setHeader('content-type', 'application/json');
             if (url.pathname.startsWith('/api/plugins/')) { res.statusCode = 404; return res.end('{}'); }
-            if (url.pathname === '/api/files/verify') return res.end(JSON.stringify({ 'files/tavern-ledger-v2.json': !!ledgerFile }));
+            if (url.pathname === '/api/files/verify') return res.end(JSON.stringify({ 'user/files/tavern-ledger-v2.json': !!ledgerFile }));
             if (url.pathname === '/api/files/upload') {
                 ledgerFile = Buffer.from(b.data, 'base64').toString('utf8');
-                return res.end(JSON.stringify({ path: '/files/tavern-ledger-v2.json' }));
+                return res.end(JSON.stringify({ path: '/user/files/tavern-ledger-v2.json' }));
             }
             if (url.pathname === '/api/openrouter/credits') return res.end(JSON.stringify({ remaining: 18.72, total_usage: 11.28 }));
             if (url.pathname.endsWith('/records')) return res.end(JSON.stringify([...records.values()].sort((a,b) => b.timestamp.localeCompare(a.timestamp))));

@@ -102,13 +102,13 @@ function installCollector() {
         const endpoint = new URL(url, location.href);
         const provider = body?.chat_completion_source;
         if (endpoint.origin !== location.origin || endpoint.pathname !== '/api/backends/chat-completions/generate'
-            || !SUPPORTED_PROVIDERS.has(provider) || !connected) return originalFetch(input, options);
+            || !SUPPORTED_PROVIDERS.has(provider)) return originalFetch(input, options);
         // Group chats and multi-choice batches need a separate association strategy.
         const active = run?.chat === context().chat && !context().groupId ? run : null;
         const row = { id: crypto.randomUUID(), provider, model: body.model, secret_id: typeof body.secret_id === 'string' ? body.secret_id : null,
-            ...(active?.identity || chatIdentity(context())), kind: active?.kind || 'quiet' };
-        try { Object.assign(row, await api('/begin', row)); }
-        catch { warn('saveError'); return originalFetch(input, options); }
+            ...(active?.identity || chatIdentity(context())), kind: active?.kind || 'quiet', timestamp: new Date().toISOString(), schema_version: 2,
+            cost: null, input_tokens: null, output_tokens: null, currency: 'USD', cost_source: 'unknown', status: 'pending' };
+        void persist(row);
         if (active && !(body.n > 1)) active.records.push(row);
         liveRequests.add(row.id);
         remember(row);
@@ -130,7 +130,7 @@ function installCollector() {
                         row.status = 'complete';
                     } else { row.status = 'failed'; await observed.body?.cancel(); }
                 } catch { row.status = 'interrupted'; }
-                await persist(row); liveRequests.delete(row.id); paintBadges(); render(); scheduleBalanceSync();
+                liveRequests.delete(row.id); paintBadges(); render(); scheduleBalanceSync(); void sync(); await persist(row);
             })();
             return response;
         } catch (e) {

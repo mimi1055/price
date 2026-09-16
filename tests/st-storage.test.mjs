@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { STFileLedger, FILE_URL } from '../lib/st-storage.mjs';
+import { STFileLedger, FILE_PATH, FILE_URL } from '../lib/st-storage.mjs';
 
 function host() {
     let file = null;
@@ -9,7 +9,7 @@ function host() {
         calls.push(url);
         if (url === FILE_URL) return file === null ? new Response('', { status: 404 }) : new Response(file);
         const b = JSON.parse(options.body);
-        if (url === '/api/files/verify') return Response.json({ 'files/tavern-ledger-v2.json': file !== null });
+        if (url === '/api/files/verify') return Response.json({ [FILE_PATH]: file !== null });
         if (url === '/api/files/upload') {
             file = Buffer.from(b.data, 'base64').toString('utf8');
             return Response.json({ path: FILE_URL });

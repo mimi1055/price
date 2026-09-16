@@ -5,7 +5,7 @@ manifest.json loads index.js and style.css. No plugin entry point, backend depen
 server/ is retained legacy source only; no runtime reference from the frontend. The v0.1 ZIP is preserved.
 
 ## Storage
-lib/st-storage.mjs uses ST native GET /files/tavern-ledger-v2.json, POST /api/files/verify, POST /api/files/upload.
+lib/st-storage.mjs uses ST native GET /user/files/tavern-ledger-v2.json, POST /api/files/verify, POST /api/files/upload.
 The existing ST authenticated server owns file persistence and uses its current user's directories. Native upload performs atomic file replacement. The frontend queues read/merge/write updates within one page. JSON has schema_version 2 and records keyed by UUID. Unicode is encoded to UTF-8 before base64 upload.
 A 404 is treated as a new ledger only after native verify confirms absence. Invalid/corrupt data aborts updates instead of replacing history.
 Two different devices read the same saved file. This is server storage, not device-to-device replication.
