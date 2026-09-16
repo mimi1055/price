@@ -271,11 +271,10 @@ function start() {
     c.extensionSettings[NAME] ||= {};
     lang = c.extensionSettings[NAME].language || (navigator.language.toLowerCase().startsWith('zh') ? 'zh-TW' : 'en');
     if (!locales[lang]) lang = 'en';
-    const panel = node('details', 'tl-settings');
-    panel.open = c.extensionSettings[NAME].settingsOpen === true;
-    panel.addEventListener('toggle', () => {
-        if (!panel.isConnected) return;
-        c.extensionSettings[NAME].settingsOpen = panel.open;
+    const panel = node('div', 'inline-drawer tl-settings');
+    globalThis.$?.(panel).on('inline-drawer-toggle.tavernLedger', () => {
+        const icon = panel.querySelector('.inline-drawer-icon');
+        c.extensionSettings[NAME].settingsOpen = icon?.classList.contains('up') === true;
         c.saveSettingsDebounced();
     });
     const label = node('label', '', t('language'));
@@ -291,8 +290,14 @@ function start() {
     function buildPanel() {
         label.firstChild.textContent = t('language');
         select.setAttribute('aria-label', t('language'));
-        const summary = node('summary', 'tl-settings-summary', 'Tavern Ledger · 酒館帳本');
-        const body = node('div', 'tl-settings-body');
+        const expanded = c.extensionSettings[NAME].settingsOpen === true;
+        const summary = node('div', 'inline-drawer-toggle inline-drawer-header');
+        summary.append(node('b', '', 'Tavern Ledger · 酒館帳本'));
+        const icon = node('div', `inline-drawer-icon fa-solid ${expanded ? 'fa-circle-chevron-up up' : 'fa-circle-chevron-down down'}`);
+        icon.setAttribute('aria-hidden', 'true');
+        summary.append(icon);
+        const body = node('div', 'inline-drawer-content tl-settings-body');
+        body.style.display = expanded ? 'block' : 'none';
         body.append(label, button(t('open'), open));
         panel.replaceChildren(summary, body);
         const status = node('p', 'tl-muted', t(connected ? 'ready' : 'offline')); status.id = 'tl-status'; body.append(status);
