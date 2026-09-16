@@ -9,6 +9,8 @@ const originalFetch = window.fetch.bind(window);
 const storage = new STFileLedger(originalFetch, () => context().getRequestHeaders());
 let rows = [], snapshot = null, connected = false, run = null, dialog = null, filter = '';
 let updateSettingsBalance = () => {};
+let syncInFlight = null;
+let balanceRefreshTimers = [];
 const unsaved = new Map();
 const writes = new Map();
 const expandedRows = new Set();
@@ -128,7 +130,7 @@ function installCollector() {
                         row.status = 'complete';
                     } else { row.status = 'failed'; await observed.body?.cancel(); }
                 } catch { row.status = 'interrupted'; }
-                await persist(row); liveRequests.delete(row.id); paintBadges(); render();
+                await persist(row); liveRequests.delete(row.id); paintBadges(); render(); scheduleBalanceSync();
             })();
             return response;
         } catch (e) {
@@ -153,10 +155,18 @@ async function refresh() {
     const status = document.getElementById('tl-status'); if (status) status.textContent = t(connected ? 'ready' : 'offline');
 }
 async function sync() {
-    try { snapshot = await api('/snapshot', {}); }
-    catch { snapshot = { unavailable: true, timestamp: new Date().toISOString() }; }
-    updateSettingsBalance();
-    render();
+    if (syncInFlight) return syncInFlight;
+    syncInFlight = (async () => {
+        try { snapshot = await api('/snapshot', {}); }
+        catch { snapshot = { unavailable: true, timestamp: new Date().toISOString() }; }
+        updateSettingsBalance();
+        render();
+    })().finally(() => { syncInFlight = null; });
+    return syncInFlight;
+}
+function scheduleBalanceSync() {
+    for (const timer of balanceRefreshTimers) clearTimeout(timer);
+    balanceRefreshTimers = [2000, 15000].map(delay => setTimeout(() => { if (!document.hidden) void sync(); }, delay));
 }
 async function locate(row) {
     try {
@@ -266,7 +276,7 @@ function open() {
         header.append(toolbar); dialog.append(header, node('main', 'tl-content')); document.body.append(dialog);
     }
     if (!dialog.open) dialog.showModal(); render(); void refresh();
-    if (!snapshot) void sync();
+    void sync();
 }
 function start() {
     const c = context();
@@ -276,8 +286,10 @@ function start() {
     const panel = node('div', 'inline-drawer tl-settings');
     globalThis.$?.(panel).on('inline-drawer-toggle.tavernLedger', () => {
         const icon = panel.querySelector('.inline-drawer-icon');
-        c.extensionSettings[NAME].settingsOpen = icon?.classList.contains('up') === true;
+        const expanded = icon?.classList.contains('up') === true;
+        c.extensionSettings[NAME].settingsOpen = expanded;
         c.saveSettingsDebounced();
+        if (expanded) void sync();
     });
     const label = node('label', '', t('language'));
     const select = node('select', 'text_pole'); select.setAttribute('aria-label', t('language'));
@@ -329,8 +341,9 @@ function start() {
     setInterval(() => {
         if (!document.hidden && dialog?.open) void refresh();
     }, 15000);
+    setInterval(() => { if (!document.hidden) void sync(); }, 60000);
     document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) void refresh();
+        if (!document.hidden) { void refresh(); void sync(); }
     });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
