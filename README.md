@@ -18,7 +18,7 @@ Use a standard API key; no management key is needed. **Balance lookup is unavail
 
 ## Features
 
-- Automatically refresh account balance and view recorded daily, weekly and monthly spending.
+- Refresh account balance when opening the extension settings or ledger, with a manual refresh button. View recorded daily, weekly and monthly spending.
 - Track chats, models, tokens, regenerations and continuation costs.
 - Search details and locate replies; detected deletions are marked while keeping cost records.
 - Export/import JSON: up to 10 MB and 20,000 records per import; existing duplicates are kept.

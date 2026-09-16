@@ -11,7 +11,6 @@ const storage = new STFileLedger(originalFetch, () => context().getRequestHeader
 let rows = [], snapshot = null, connected = false, run = null, dialog = null, filter = '';
 let updateSettingsBalance = () => {};
 let syncInFlight = null;
-let balanceRefreshTimers = [];
 const unsaved = new Map();
 const writes = new Map();
 const expandedRows = new Set();
@@ -158,7 +157,7 @@ function installCollector() {
                     } else { row.status = 'failed'; await observed.body?.cancel(); }
                 } catch { row.status = 'interrupted'; }
                 paintBadges(); render(); await recoverCost(row, before);
-                delete row.isolated; liveRequests.delete(row.id); paintBadges(); render(); scheduleBalanceSync(); void sync(); await persist(row);
+                delete row.isolated; liveRequests.delete(row.id); paintBadges(); render(); await persist(row);
             })();
             return response;
         } catch (e) {
@@ -192,10 +191,6 @@ async function sync() {
     })().finally(() => { syncInFlight = null; });
     return syncInFlight;
 }
-function scheduleBalanceSync() {
-    for (const timer of balanceRefreshTimers) clearTimeout(timer);
-    balanceRefreshTimers = [2000, 15000].map(delay => setTimeout(() => { if (!document.hidden) void sync(); }, delay));
-}
 const wait = delay => new Promise(resolve => setTimeout(resolve, delay));
 async function recoverCost(row, before) {
     if (money(row.cost) !== null || !row.isolated || money(before?.total_used) === null) return;
@@ -204,7 +199,6 @@ async function recoverCost(row, before) {
         await wait(delay);
         try {
             after = await api('/snapshot', {});
-            snapshot = after; updateSettingsBalance(); render();
             const delta = costFromSnapshots(before, after);
             if (delta > 0) {
                 row.cost = delta; row.cost_source = 'accountDelta';
@@ -334,6 +328,11 @@ function start() {
     lang = c.extensionSettings[NAME].language || 'en';
     if (!locales[lang]) lang = 'en';
     const panel = node('div', 'inline-drawer tl-settings');
+    // Refresh when the extension settings become visible, including a saved-open drawer.
+    const settingsObserver = new IntersectionObserver(entries => {
+        if (!document.hidden && entries.some(entry => entry.isIntersecting)) void sync();
+    });
+    settingsObserver.observe(panel);
     globalThis.$?.(panel).on('inline-drawer-toggle.tavernLedger', () => {
         const icon = panel.querySelector('.inline-drawer-icon');
         const expanded = icon?.classList.contains('up') === true;
@@ -367,7 +366,7 @@ function start() {
         updateSettingsBalance = () => {
             balanceValue.textContent = snapshot
                 ? (snapshot.unavailable ? t('unavailableShort') : `US$${snapshot.balance.toFixed(4)}`)
-                : t('loading');
+                : t('none');
         };
         updateSettingsBalance();
         quickBalance.append(node('span', '', t('balance')), balanceValue, button(t('sync'), sync));
@@ -390,13 +389,12 @@ function start() {
         body.append(button(t('import'), () => importInput.click()), importInput);
         (document.getElementById('extensions_settings2') || document.getElementById('extensions_settings')).append(panel);
     }
-    label.append(select); buildPanel(); installCollector(); void refresh(); void sync();
+    label.append(select); buildPanel(); installCollector(); void refresh();
     setInterval(() => {
         if (!document.hidden && dialog?.open) void refresh();
     }, 15000);
-    setInterval(() => { if (!document.hidden) void sync(); }, 60000);
     document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) { void refresh(); void sync(); }
+        if (!document.hidden) void refresh();
     });
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true }); else start();
