@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { readUsage, summarize, usageFrom } from '../lib/core.mjs';
+import { costFromSnapshots, readUsage, summarize, usageFrom } from '../lib/core.mjs';
 import { LedgerStore } from '../server/store.mjs';
 import { OpenRouterProvider } from '../server/openrouter.mjs';
 import { locales } from '../locales.mjs';
@@ -22,6 +22,11 @@ test('non-stream JSON and zero-cost generations remain official; unknown never b
     await readUsage(Response.json({ usage: { cost: 0 } }), x => { data = x; });
     assert.equal(usageFrom(data).cost_source, 'provider');
     assert.equal(usageFrom({ usage: {} }).cost, null);
+});
+test('account usage snapshots recover charges without accepting invalid differences', () => {
+    assert.ok(Math.abs(costFromSnapshots({ total_used: 10 }, { total_used: 10.025 }) - .025) < 1e-12);
+    assert.equal(costFromSnapshots({ total_used: 10 }, { total_used: 9 }), null);
+    assert.equal(costFromSnapshots({}, { total_used: 10 }), null);
 });
 
 test('unsupported providers are ignored behind the provider adapter boundary', () => {

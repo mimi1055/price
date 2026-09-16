@@ -1,4 +1,4 @@
-import { money, readUsage, summarize, usageFrom } from './lib/core.mjs';
+import { costFromSnapshots, money, readUsage, summarize, usageFrom } from './lib/core.mjs';
 import { locales } from './locales.mjs';
 import { STFileLedger } from './lib/st-storage.mjs';
 
@@ -105,9 +105,11 @@ function installCollector() {
             || !SUPPORTED_PROVIDERS.has(provider)) return originalFetch(input, options);
         // Group chats and multi-choice batches need a separate association strategy.
         const active = run?.chat === context().chat && !context().groupId ? run : null;
+        const isolated = liveRequests.size === 0;
+        const before = isolated ? await api('/snapshot', {}).catch(() => null) : null;
         const row = { id: crypto.randomUUID(), provider, model: body.model, secret_id: typeof body.secret_id === 'string' ? body.secret_id : null,
             ...(active?.identity || chatIdentity(context())), kind: active?.kind || 'quiet', timestamp: new Date().toISOString(), schema_version: 2,
-            cost: null, input_tokens: null, output_tokens: null, currency: 'USD', cost_source: 'unknown', status: 'pending' };
+            cost: null, input_tokens: null, output_tokens: null, currency: 'USD', cost_source: 'unknown', status: 'pending', isolated };
         void persist(row);
         if (active && !(body.n > 1)) active.records.push(row);
         liveRequests.add(row.id);
@@ -130,7 +132,8 @@ function installCollector() {
                         row.status = 'complete';
                     } else { row.status = 'failed'; await observed.body?.cancel(); }
                 } catch { row.status = 'interrupted'; }
-                liveRequests.delete(row.id); paintBadges(); render(); scheduleBalanceSync(); void sync(); await persist(row);
+                paintBadges(); render(); await recoverCost(row, before);
+                delete row.isolated; liveRequests.delete(row.id); paintBadges(); render(); scheduleBalanceSync(); void sync(); await persist(row);
             })();
             return response;
         } catch (e) {
@@ -167,6 +170,26 @@ async function sync() {
 function scheduleBalanceSync() {
     for (const timer of balanceRefreshTimers) clearTimeout(timer);
     balanceRefreshTimers = [2000, 15000].map(delay => setTimeout(() => { if (!document.hidden) void sync(); }, delay));
+}
+const wait = delay => new Promise(resolve => setTimeout(resolve, delay));
+async function recoverCost(row, before) {
+    if (money(row.cost) !== null || !row.isolated || money(before?.total_used) === null) return;
+    let after = null;
+    for (const delay of [2000, 5000, 15000]) {
+        await wait(delay);
+        try {
+            after = await api('/snapshot', {});
+            snapshot = after; updateSettingsBalance(); render();
+            const delta = costFromSnapshots(before, after);
+            if (delta > 0) {
+                row.cost = delta; row.cost_source = 'accountDelta';
+                return;
+            }
+        } catch { /* Keep the record unconfirmed and retry. */ }
+    }
+    if (String(row.model || '').includes(':free') && costFromSnapshots(before, after) === 0) {
+        row.cost = 0; row.cost_source = 'accountDelta';
+    }
 }
 async function locate(row) {
     try {
