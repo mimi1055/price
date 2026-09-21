@@ -20,6 +20,7 @@ let lang = 'en';
 const t = key => locales[lang][key] || key;
 const visibleRows = () => rows.filter(r => SUPPORTED_PROVIDERS.has(r.provider || 'openrouter'));
 const usd = n => money(n) === null ? t('unknown') : `US$${n.toFixed(5).replace(/0+$/, '').replace(/\.$/, '.00')}`;
+const tokenSummary = r => `${t('input')} ${r.input_tokens ?? '—'} ${t('tokenUnit')} / ${t('output')} ${r.output_tokens ?? '—'} ${t('tokenUnit')}`;
 function node(tag, cls, text) {
     const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n;
 }
@@ -259,7 +260,7 @@ function paintBadges() {
         let continuation = 0;
         for (const r of [...selected].sort((a, b) => a.timestamp.localeCompare(b.timestamp))) {
             const label = r.kind === 'continue' ? `${t('continue')} ${++continuation}` : t(r.kind);
-            details.append(node('div', '', `${label} · ${usd(r.cost)} · ${t(r.cost_source)} · ${t('input')} ${r.input_tokens ?? '—'} / ${t('output')} ${r.output_tokens ?? '—'}`));
+            details.append(node('div', '', `${label} · ${usd(r.cost)} · ${t(r.cost_source)} · ${tokenSummary(r)}`));
         }
         target.append(details);
     });
@@ -289,7 +290,7 @@ function render() {
     }
     account.append(node('p', 'tl-muted', t('accountScope')));
     account.append(node('p', 'tl-muted', t('queryLimit')));
-    content.append(account, node('p', 'tl-muted', t('coverage')), node('p', 'tl-muted', t('timezone')));
+    content.append(account, node('p', 'tl-muted', t('coverage')), node('p', 'tl-muted', t('tokenHelp')), node('p', 'tl-muted', t('timezone')));
     const search = node('input', 'text_pole tl-search'); search.placeholder = t('filter'); search.setAttribute('aria-label', t('filter')); search.value = filter;
     search.addEventListener('input', () => { filter = search.value; renderList(list); });
     const list = node('div', 'tl-list'); content.append(search, list); renderList(list);
@@ -310,8 +311,10 @@ function renderList(list) {
         identity.append(node('small', 'tl-muted', `${r.message_id ? `${t('reply')} #${r.reply_number} · ${t('candidate')} ${(r.swipe_index ?? 0) + 1}` : t('unlinked')} · ${t(r.kind)}`));
         heading.append(identity, node('strong', '', usd(r.cost)));
         item.append(heading, node('div', 'tl-muted', `${new Date(r.timestamp).toLocaleString(lang)} · ${t(r.provider || 'openrouter')} · ${r.model || '—'}`),
-            node('div', '', `${r.message_id ? `${t('reply')} #${r.reply_number} · ${t('candidate')} ${(r.swipe_index ?? 0) + 1}` : t('unlinked')} · ${t(r.kind)} · ${t(r.status)}`),
-            node('div', '', `${t('input')} ${r.input_tokens ?? '—'} / ${t('output')} ${r.output_tokens ?? '—'} · ${t(r.cost_source)}`));
+            node('div', '', t(r.status)),
+            node('div', '', `${tokenSummary(r)} · ${t(r.cost_source)}`));
+        if (!r.message_id) item.append(node('small', 'tl-muted', t('unlinkedHelp')));
+        if (r.status === 'interrupted') item.append(node('small', 'tl-muted', t('interruptedHelp')));
         const actions = node('div', 'tl-actions');
         if (r.message_id && !r.message_deleted) actions.append(button(t('locate'), () => locate(r)));
         if (r.cost === null) item.append(node('small', 'tl-muted', t('costLimit')));
