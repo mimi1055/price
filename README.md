@@ -37,7 +37,8 @@ Refresh SillyTavern when the clone finishes.
 
 - Refresh the OpenRouter balance after a response, with one follow-up after 15 seconds for delayed charges. Opening extension settings or the ledger also refreshes it; manual refresh remains available.
 - View recorded daily, weekly and monthly spending.
-- Export an XLSX spreadsheet with monthly totals, model totals and individual records. Editing the exported copy does not change the ledger; use JSON for backup and import.
+- Browse all saved records in pages of 10; pagination does not delete records or reduce the ledger file size.
+- Export an XLSX spreadsheet that opens on individual records with character, chat, reply/candidate numbers, model, cost and tokens; monthly and model totals are separate sheets. Chat transcripts are not stored or exported. Editing the exported copy does not change the ledger; use JSON for backup and import.
 - Track chats, models, tokens, regenerations and continuation costs.
 - Search details and locate replies; detected deletions are marked while keeping cost records.
 - Export and import JSON: up to 10 MB and 20,000 records per import; existing duplicates are preserved.

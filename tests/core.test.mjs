@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { costFromSnapshots, monthlySpend, readUsage, summarize, usageFrom } from '../lib/core.mjs';
+import { costFromSnapshots, monthlySpend, pageOf, readUsage, summarize, usageFrom } from '../lib/core.mjs';
 import { LedgerStore } from '../server/store.mjs';
 import { OpenRouterProvider } from '../server/openrouter.mjs';
 import { locales } from '../locales.mjs';
@@ -49,6 +49,14 @@ test('monthly spending separates years and months, including local month boundar
     assert.equal(monthlySpend(records, 2026, 7), .2);
     assert.equal(monthlySpend(records, 2026, 8), .3);
     assert.equal(monthlySpend(records, 2025, 7), .4);
+});
+test('record pages show ten each and keep older records accessible', () => {
+    const records = Array.from({ length: 501 }, (_, i) => i);
+    assert.deepEqual(pageOf(records, 0).rows, records.slice(0, 10));
+    assert.deepEqual(pageOf(records, 1).rows, records.slice(10, 20));
+    assert.deepEqual(pageOf(records, 50).rows, [500]);
+    assert.equal(pageOf(records, 500).page, 50);
+    assert.equal(pageOf([], 4).page, 0);
 });
 test('concurrent writers preserve links and usage; independent records survive reload', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'tl-test-'));

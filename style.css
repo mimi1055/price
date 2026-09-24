@@ -8,6 +8,7 @@
 .tl-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 20px; border-bottom: 1px solid #ffffff20; }
 .tl-header h2 { margin: 0; font-family: Georgia, serif; font-size: 26px; }
 .tl-content { padding: 20px; }
+.tl-export-privacy { margin: 0; padding: 12px 20px 0; }
 .tl-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .tl-button { width: auto; min-height: 38px; margin: 0; padding: 7px 12px; cursor: pointer; }
 .tl-dialog .tl-button { background: #313931; color: #f0ecdf; border: 1px solid #66715c; border-radius: 6px; }
@@ -29,9 +30,11 @@
 .tl-row summary { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; cursor: pointer; padding: 6px 0; }
 .tl-row summary strong { color: #e1c68c; white-space: nowrap; }
 .tl-row .tl-actions { margin-top: 10px; }
+.tl-pagination { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; padding: 16px 0 4px; }
+.tl-pagination .tl-button:disabled { opacity: .4; cursor: default; }
 .tl-badge { font-size: 12px; opacity: .85; margin-top: 12px; padding: 8px; border-top: 1px solid var(--SmartThemeBorderColor, #777); }
 .tl-badge summary { cursor: pointer; }
 .tl-badge div { padding-top: 5px; }
 .tl-highlight { outline: 2px solid #c5a468; outline-offset: -2px; }
 .tl-warning { border-left: 3px solid #e0a667; padding: 10px; background: #e0a66715; }
-@media (max-width: 550px) { .tl-cards { grid-template-columns: repeat(2, 1fr); } .tl-content, .tl-header { padding: 14px; } }
+@media (max-width: 550px) { .tl-cards { grid-template-columns: repeat(2, 1fr); } .tl-content, .tl-header { padding: 14px; } .tl-export-privacy { padding: 12px 14px 0; } }

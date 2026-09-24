@@ -9,6 +9,8 @@ test('spreadsheet includes monthly, model and editable record views with safe te
         { id: 'b', timestamp: '2026-08-01T04:00:00Z', provider: 'openrouter', model: 'other', cost: null },
         { id: 'c', timestamp: '2026-09-01T04:00:00Z', provider: 'other', model: 'ignored', cost: 10 },
         { id: 'd', timestamp: '2026-09-02T04:00:00Z', provider: 'openrouter', model: 'test-model', cost: null, kind: 'connectionTest', status: 'failed' },
+        { id: 'e', timestamp: '2026-09-03T04:00:00Z', provider: 'openrouter', model: 'linked-model', cost: .02,
+            character: 'Hero', chat_name: 'Chapter 1', message_id: 'reply-id', reply_number: 7, swipe_index: 1, kind: 'swipe', status: 'complete' },
     ];
     const bytes = new Uint8Array(await exportLedgerXlsx(records).arrayBuffer());
     const view = new DataView(bytes.buffer);
@@ -21,13 +23,19 @@ test('spreadsheet includes monthly, model and editable record views with safe te
         offset = start + length;
     }
     assert.equal(files.size, 8);
-    assert.match(files.get('xl/workbook.xml'), /模型統計/);
-    assert.match(files.get('xl/worksheets/sheet1.xml'), /2026-08/);
-    assert.match(files.get('xl/worksheets/sheet2.xml'), /HYPERLINK/);
-    assert.doesNotMatch(files.get('xl/worksheets/sheet2.xml'), /ignored/);
-    assert.match(files.get('xl/worksheets/sheet3.xml'), /A&amp;B/);
-    assert.match(files.get('xl/worksheets/sheet3.xml'), /連線測試/);
-    assert.match(files.get('xl/worksheets/sheet3.xml'), /測試失敗；可能未收費/);
-    assert.match(files.get('xl/worksheets/sheet3.xml'), /<v>0\.01212<\/v>/);
-    assert.doesNotMatch(files.get('xl/worksheets/sheet3.xml'), /<f>/);
+    assert.match(files.get('xl/styles.xml'), /<fill><patternFill patternType="gray125"\/><\/fill>/);
+    assert.match(files.get('xl/styles.xml'), /fillId="2"/);
+    assert.match(files.get('xl/styles.xml'), /color rgb="FF1F2A1F"/);
+    assert.match(files.get('xl/workbook.xml'), /<sheet name="逐筆明細" sheetId="1"/);
+    assert.match(files.get('xl/worksheets/sheet1.xml'), /AI 回覆序號/);
+    assert.match(files.get('xl/worksheets/sheet1.xml'), /A&amp;B/);
+    assert.match(files.get('xl/worksheets/sheet1.xml'), /連線測試/);
+    assert.match(files.get('xl/worksheets/sheet1.xml'), /測試失敗；可能未收費/);
+    assert.match(files.get('xl/worksheets/sheet1.xml'), /<c r="D2" s="0"><v>7<\/v><\/c>/);
+    assert.match(files.get('xl/worksheets/sheet1.xml'), /<c r="E2" s="0"><v>2<\/v><\/c>/);
+    assert.match(files.get('xl/worksheets/sheet1.xml'), /<v>0\.01212<\/v>/);
+    assert.doesNotMatch(files.get('xl/worksheets/sheet1.xml'), /<f>/);
+    assert.match(files.get('xl/worksheets/sheet2.xml'), /2026-08/);
+    assert.match(files.get('xl/worksheets/sheet3.xml'), /HYPERLINK/);
+    assert.doesNotMatch(files.get('xl/worksheets/sheet3.xml'), /ignored/);
 });

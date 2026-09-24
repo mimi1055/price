@@ -1,4 +1,4 @@
-import { costFromSnapshots, money, monthlySpend, readUsage, summarize, usageFrom } from './lib/core.mjs';
+import { costFromSnapshots, money, monthlySpend, pageOf, readUsage, summarize, usageFrom } from './lib/core.mjs';
 import { locales } from './locales.mjs';
 import { STFileLedger } from './lib/st-storage.mjs';
 import { readImportFile } from './lib/import.mjs';
@@ -11,6 +11,7 @@ const originalFetch = window.fetch.bind(window);
 const storage = new STFileLedger(originalFetch, () => context().getRequestHeaders());
 let rows = [], snapshot = null, connected = false, run = null, dialog = null, filter = '';
 let monthOffset = 0;
+let listPage = 0;
 let updateSettingsBalance = () => {};
 let syncInFlight = null;
 let balanceFollowupTimer = null;
@@ -327,14 +328,16 @@ function render() {
     account.append(node('p', 'tl-muted', t('queryLimit')));
     content.append(account, node('p', 'tl-muted', t('coverage')), node('p', 'tl-muted', t('tokenHelp')), node('p', 'tl-muted', t('timezone')));
     const search = node('input', 'text_pole tl-search'); search.placeholder = t('filter'); search.setAttribute('aria-label', t('filter')); search.value = filter;
-    search.addEventListener('input', () => { filter = search.value; renderList(list); });
+    search.addEventListener('input', () => { filter = search.value; listPage = 0; renderList(list); });
     const list = node('div', 'tl-list'); content.append(search, list); renderList(list);
 }
 function renderList(list) {
     list.replaceChildren();
     const filtered = visibleRows().filter(r => [r.character, r.chat_name, r.model, r.provider, t(r.kind)].join(' ').toLowerCase().includes(filter.toLowerCase()));
+    const pagination = pageOf(filtered, listPage);
+    listPage = pagination.page;
     if (!filtered.length) list.append(node('p', 'tl-muted', t('empty')));
-    for (const r of filtered.slice(0, 500)) {
+    for (const r of pagination.rows) {
         const item = node('details', 'tl-row'), heading = node('summary', '');
         item.open = expandedRows.has(r.id);
         item.addEventListener('toggle', () => {
@@ -357,7 +360,17 @@ function renderList(list) {
         if (r.cost === null && r.kind !== 'connectionTest') item.append(node('small', 'tl-muted', t('costLimit')));
         item.append(actions); list.append(item);
     }
-    if (filtered.length > 500) list.append(node('p', 'tl-muted', `${Math.min(500, filtered.length)} / ${filtered.length}`));
+    if (pagination.pages > 1) {
+        const nav = node('nav', 'tl-pagination');
+        nav.setAttribute('aria-label', t('pages'));
+        const previous = button(t('previousPage'), () => { listPage--; renderList(list); });
+        previous.disabled = listPage === 0;
+        const next = button(t('nextPage'), () => { listPage++; renderList(list); });
+        next.disabled = listPage === pagination.pages - 1;
+        const pageLabel = t('pageCount').replace('{current}', listPage + 1).replace('{total}', pagination.pages);
+        nav.append(previous, node('span', 'tl-muted', `${pageLabel} · ${filtered.length} ${t('records')}`), next);
+        list.append(nav);
+    }
 }
 function open() {
     if (!dialog) {
@@ -374,7 +387,7 @@ function open() {
             const url = URL.createObjectURL(new Blob([JSON.stringify({ version: 2, records: rows }, null, 2)], { type: 'application/json' }));
             const a = node('a'); a.href = url; a.download = `tavern-ledger-${new Date().toISOString().slice(0, 10)}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
         }), button(t('close'), () => dialog.close()));
-        header.append(toolbar); dialog.append(header, node('p', 'tl-muted', t('exportPrivacy')), node('main', 'tl-content')); document.body.append(dialog);
+        header.append(toolbar); dialog.append(header, node('p', 'tl-muted tl-export-privacy', t('exportPrivacy')), node('main', 'tl-content')); document.body.append(dialog);
     }
     if (!dialog.open) dialog.showModal(); render(); void refresh();
     void sync();
