@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { costFromSnapshots, readUsage, summarize, usageFrom } from '../lib/core.mjs';
+import { costFromSnapshots, monthlySpend, readUsage, summarize, usageFrom } from '../lib/core.mjs';
 import { LedgerStore } from '../server/store.mjs';
 import { OpenRouterProvider } from '../server/openrouter.mjs';
 import { locales } from '../locales.mjs';
@@ -38,6 +38,17 @@ test('summary counts continuations and discarded candidates, excludes unknown', 
         .map(r => ({ ...r, timestamp: now.toISOString() }));
     const s = summarize(records, now);
     assert.equal(s.total, .06); assert.equal(s.today, .06); assert.equal(s.unknown, 1);
+});
+test('monthly spending separates years and months, including local month boundaries', () => {
+    const records = [
+        { timestamp: new Date(2026, 7, 31, 23, 59).toISOString(), cost: .2 },
+        { timestamp: new Date(2026, 8, 1).toISOString(), cost: .3 },
+        { timestamp: new Date(2025, 7, 31).toISOString(), cost: .4 },
+        { timestamp: new Date(2026, 7, 15).toISOString(), cost: null },
+    ];
+    assert.equal(monthlySpend(records, 2026, 7), .2);
+    assert.equal(monthlySpend(records, 2026, 8), .3);
+    assert.equal(monthlySpend(records, 2025, 7), .4);
 });
 test('concurrent writers preserve links and usage; independent records survive reload', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'tl-test-'));

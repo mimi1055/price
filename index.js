@@ -1,7 +1,8 @@
-import { costFromSnapshots, money, readUsage, summarize, usageFrom } from './lib/core.mjs';
+import { costFromSnapshots, money, monthlySpend, readUsage, summarize, usageFrom } from './lib/core.mjs';
 import { locales } from './locales.mjs';
 import { STFileLedger } from './lib/st-storage.mjs';
 import { readImportFile } from './lib/import.mjs';
+import { exportLedgerXlsx } from './lib/xlsx-export.mjs';
 
 const NAME = 'tavern_ledger';
 const SUPPORTED_PROVIDERS = new Set(['openrouter']);
@@ -9,6 +10,7 @@ const context = () => SillyTavern.getContext();
 const originalFetch = window.fetch.bind(window);
 const storage = new STFileLedger(originalFetch, () => context().getRequestHeaders());
 let rows = [], snapshot = null, connected = false, run = null, dialog = null, filter = '';
+let monthOffset = 0;
 let updateSettingsBalance = () => {};
 let syncInFlight = null;
 let balanceFollowupTimer = null;
@@ -16,6 +18,7 @@ const unsaved = new Map();
 const writes = new Map();
 const expandedRows = new Set();
 const liveRequests = new Set();
+let pendingConnectionTestUntil = 0;
 let lang = 'en';
 const t = key => locales[lang][key] || key;
 const visibleRows = () => rows.filter(r => SUPPORTED_PROVIDERS.has(r.provider || 'openrouter'));
@@ -62,6 +65,10 @@ function chatIdentity(c) {
 
 function installCollector() {
     const c = context(), on = (name, fn) => { if (c.eventTypes[name]) c.eventSource.on(c.eventTypes[name], fn); };
+    document.addEventListener('click', event => {
+        if (event.target instanceof Element && event.target.closest('#test_api_button')
+            && document.querySelector('#chat_completion_source')?.value === 'openrouter') pendingConnectionTestUntil = Date.now() + 30000;
+    }, true);
     let observedChatId = null, observedMessageIds = new Set();
     function observeMessages(deleted = false) {
         const current = context(), chatId = chatIdentity(current).chat_id;
@@ -129,15 +136,19 @@ function installCollector() {
         const provider = body?.chat_completion_source;
         if (endpoint.origin !== location.origin || endpoint.pathname !== '/api/backends/chat-completions/generate'
             || !SUPPORTED_PROVIDERS.has(provider)) return originalFetch(input, options);
+        const connectionTest = Date.now() <= pendingConnectionTestUntil;
+        if (connectionTest) pendingConnectionTestUntil = 0;
         // Group chats and multi-choice batches need a separate association strategy.
         const active = run?.chat === context().chat && !context().groupId ? run : null;
+        const identity = connectionTest ? { character: '', character_id: '', chat_name: '', chat_id: '' }
+            : active?.identity || chatIdentity(context());
         const isolated = liveRequests.size === 0;
         const before = isolated ? await api('/snapshot', {}).catch(() => null) : null;
         const row = { id: crypto.randomUUID(), provider, model: body.model, secret_id: typeof body.secret_id === 'string' ? body.secret_id : null,
-            ...(active?.identity || chatIdentity(context())), kind: active?.kind || 'quiet', timestamp: new Date().toISOString(), schema_version: 2,
+            ...identity, kind: connectionTest ? 'connectionTest' : active?.kind || 'quiet', timestamp: new Date().toISOString(), schema_version: 2,
             cost: null, input_tokens: null, output_tokens: null, currency: 'USD', cost_source: 'unknown', status: 'pending', isolated };
         void persist(row);
-        if (active && !(body.n > 1)) active.records.push(row);
+        if (active && !connectionTest && !(body.n > 1)) active.records.push(row);
         liveRequests.add(row.id);
         remember(row);
         try {
@@ -146,7 +157,9 @@ function installCollector() {
             void (async () => {
                 try {
                     if (response.ok) {
+                        let providerError = false;
                         await readUsage(observed, data => {
+                            if (data.error) providerError = true;
                             if (typeof data.id === 'string') row.request_id = data.id;
                             const usage = usageFrom(data, provider);
                             for (const [key, value] of Object.entries(usage)) {
@@ -155,7 +168,7 @@ function installCollector() {
                             // Save generation ID early, including interrupted streams.
                             if (row.request_id && !row.id_saved) { row.id_saved = true; void persist(row); }
                         });
-                        row.status = 'complete';
+                        row.status = providerError ? 'failed' : 'complete';
                     } else { row.status = 'failed'; await observed.body?.cancel(); }
                 } catch { row.status = 'interrupted'; }
                 void refreshBalanceAfterGeneration();
@@ -275,7 +288,29 @@ function render() {
     const shownRows = visibleRows();
     const sum = summarize(shownRows), cards = node('div', 'tl-cards');
     for (const key of ['today', 'week', 'month', 'total']) {
-        const card = node('div', 'tl-card'); card.append(node('small', '', t(key)), node('strong', '', usd(sum[key]))); cards.append(card);
+        const card = node('div', 'tl-card');
+        if (key === 'month') {
+            const now = new Date();
+            const selected = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+            const oldest = shownRows.reduce((date, row) => {
+                const value = new Date(row.timestamp);
+                return !date || value < date ? value : date;
+            }, null);
+            const heading = node('div', 'tl-month-heading');
+            const previous = button('‹', () => { monthOffset--; render(); });
+            previous.classList.add('tl-month-arrow');
+            previous.setAttribute('aria-label', t('previousMonth'));
+            previous.title = t('previousMonth');
+            previous.disabled = !oldest || selected <= new Date(oldest.getFullYear(), oldest.getMonth(), 1);
+            const next = button('›', () => { monthOffset++; render(); });
+            next.classList.add('tl-month-arrow');
+            next.setAttribute('aria-label', t('nextMonth'));
+            next.title = t('nextMonth');
+            next.disabled = monthOffset === 0;
+            heading.append(previous, node('small', '', selected.toLocaleDateString(lang, { year: 'numeric', month: 'long' })), next);
+            card.append(heading, node('strong', '', usd(monthOffset === 0 ? sum.month : monthlySpend(shownRows, selected.getFullYear(), selected.getMonth()))));
+        } else card.append(node('small', '', t(key)), node('strong', '', usd(sum[key])));
+        cards.append(card);
     }
     content.append(cards);
     const current = shownRows.filter(r => r.chat_id === chatIdentity(context()).chat_id);
@@ -297,7 +332,7 @@ function render() {
 }
 function renderList(list) {
     list.replaceChildren();
-    const filtered = visibleRows().filter(r => [r.character, r.chat_name, r.model, r.provider].join(' ').toLowerCase().includes(filter.toLowerCase()));
+    const filtered = visibleRows().filter(r => [r.character, r.chat_name, r.model, r.provider, t(r.kind)].join(' ').toLowerCase().includes(filter.toLowerCase()));
     if (!filtered.length) list.append(node('p', 'tl-muted', t('empty')));
     for (const r of filtered.slice(0, 500)) {
         const item = node('details', 'tl-row'), heading = node('summary', '');
@@ -306,18 +341,20 @@ function renderList(list) {
             if (!item.isConnected) return;
             if (item.open) expandedRows.add(r.id); else expandedRows.delete(r.id);
         });
-        const identity = node('span', 'tl-identity', `${r.character || '—'} / ${r.chat_name || '—'}`);
+        const identity = node('span', 'tl-identity', r.kind === 'connectionTest' ? t('connectionTest') : `${r.character || '—'} / ${r.chat_name || '—'}`);
         if (r.message_deleted) identity.append(node('small', 'tl-muted', t('deleted')));
-        identity.append(node('small', 'tl-muted', `${r.message_id ? `${t('reply')} #${r.reply_number} · ${t('candidate')} ${(r.swipe_index ?? 0) + 1}` : t('unlinked')} · ${t(r.kind)}`));
+        if (r.kind !== 'connectionTest') identity.append(node('small', 'tl-muted',
+            `${r.message_id ? `${t('reply')} #${r.reply_number} · ${t('candidate')} ${(r.swipe_index ?? 0) + 1}` : t('unlinked')} · ${t(r.kind)}`));
         heading.append(identity, node('strong', '', usd(r.cost)));
         item.append(heading, node('div', 'tl-muted', `${new Date(r.timestamp).toLocaleString(lang)} · ${t(r.provider || 'openrouter')} · ${r.model || '—'}`),
             node('div', '', t(r.status)),
             node('div', '', `${tokenSummary(r)} · ${t(r.cost_source)}`));
-        if (!r.message_id) item.append(node('small', 'tl-muted', t('unlinkedHelp')));
+        if (r.kind === 'connectionTest') item.append(node('small', 'tl-muted', t(r.status === 'failed' && r.cost == null ? 'connectionTestFailedHelp' : 'connectionTestHelp')));
+        else if (!r.message_id) item.append(node('small', 'tl-muted', t('unlinkedHelp')));
         if (r.status === 'interrupted') item.append(node('small', 'tl-muted', t('interruptedHelp')));
         const actions = node('div', 'tl-actions');
         if (r.message_id && !r.message_deleted) actions.append(button(t('locate'), () => locate(r)));
-        if (r.cost === null) item.append(node('small', 'tl-muted', t('costLimit')));
+        if (r.cost === null && r.kind !== 'connectionTest') item.append(node('small', 'tl-muted', t('costLimit')));
         item.append(actions); list.append(item);
     }
     if (filtered.length > 500) list.append(node('p', 'tl-muted', `${Math.min(500, filtered.length)} / ${filtered.length}`));
@@ -327,7 +364,13 @@ function open() {
         dialog = node('dialog', 'tl-dialog'); dialog.setAttribute('aria-label', 'Tavern Ledger');
         const header = node('header', 'tl-header'); header.append(node('h2', '', 'Tavern Ledger'));
         const toolbar = node('div', 'tl-actions');
-        toolbar.append(button(t('refresh'), refresh), button(t('export'), () => {
+        toolbar.append(button(t('refresh'), refresh), button(t('exportXlsx'), () => {
+            try {
+                const url = URL.createObjectURL(exportLedgerXlsx(rows, lang));
+                const a = node('a'); a.href = url; a.download = `tavern-ledger-${new Date().toISOString().slice(0, 10)}.xlsx`;
+                a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+            } catch { warn('error'); }
+        }), button(t('export'), () => {
             const url = URL.createObjectURL(new Blob([JSON.stringify({ version: 2, records: rows }, null, 2)], { type: 'application/json' }));
             const a = node('a'); a.href = url; a.download = `tavern-ledger-${new Date().toISOString().slice(0, 10)}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
         }), button(t('close'), () => dialog.close()));

@@ -15,14 +15,18 @@
 .tl-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .tl-card { display: grid; gap: 10px; padding: 16px; background: #2b332b; border-radius: 10px; }
 .tl-card strong { font-size: clamp(16px, 2.4vw, 25px); color: #e1c68c; overflow-wrap: anywhere; }
+.tl-month-heading { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-width: 0; }
+.tl-month-heading small { text-align: center; white-space: nowrap; }
+.tl-dialog .tl-month-arrow { min-width: 26px; min-height: 26px; padding: 0 5px; font-size: 20px; line-height: 1; }
+.tl-dialog .tl-month-arrow:disabled { opacity: .35; cursor: default; }
 .tl-muted { color: #b8bcad; font-size: 13px; line-height: 1.5; }
 .tl-account { padding: 16px; border: 1px solid #ffffff20; border-radius: 10px; }
 .tl-account h3 { margin: 0 0 10px; }
 .tl-account-row { margin-top: 8px; font-size: 14px; }
 .tl-search { box-sizing: border-box; width: 100%; margin: 10px 0; padding: 10px; border: 1px solid #66715c; border-radius: 6px; background: #30372f; color: #eeeae0; }
-.tl-identity { display: grid; gap: 5px; }
-.tl-row { padding: 14px 0; border-bottom: 1px solid #ffffff20; overflow-wrap: anywhere; }
-.tl-row summary { display: flex; justify-content: space-between; gap: 12px; cursor: pointer; padding: 6px 0; }
+.tl-identity { display: grid; gap: 5px; min-width: 0; overflow-wrap: break-word; word-break: normal; }
+.tl-row { padding: 14px 0; border-bottom: 1px solid #ffffff20; overflow-wrap: break-word; }
+.tl-row summary { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; cursor: pointer; padding: 6px 0; }
 .tl-row summary strong { color: #e1c68c; white-space: nowrap; }
 .tl-row .tl-actions { margin-top: 10px; }
 .tl-badge { font-size: 12px; opacity: .85; margin-top: 12px; padding: 8px; border-top: 1px solid var(--SmartThemeBorderColor, #777); }
@@ -30,4 +34,4 @@
 .tl-badge div { padding-top: 5px; }
 .tl-highlight { outline: 2px solid #c5a468; outline-offset: -2px; }
 .tl-warning { border-left: 3px solid #e0a667; padding: 10px; background: #e0a66715; }
-@media (max-width: 550px) { .tl-cards { grid-template-columns: repeat(2, 1fr); } .tl-content, .tl-header { padding: 14px; } .tl-row summary { flex-direction: column; gap: 4px; } }
+@media (max-width: 550px) { .tl-cards { grid-template-columns: repeat(2, 1fr); } .tl-content, .tl-header { padding: 14px; } }
