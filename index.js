@@ -6,6 +6,7 @@ import { exportLedgerXlsx } from './lib/xlsx-export.mjs';
 
 const NAME = 'tavern_ledger';
 const SUPPORTED_PROVIDERS = new Set(['openrouter']);
+const COST_CHECK_DELAYS_MS = [2000, 5000, 15000]; // Three checks per request; opening the ledger does not restart them.
 const context = () => SillyTavern.getContext();
 const originalFetch = window.fetch.bind(window);
 const storage = new STFileLedger(originalFetch, () => context().getRequestHeaders());
@@ -221,7 +222,7 @@ const wait = delay => new Promise(resolve => setTimeout(resolve, delay));
 async function recoverCost(row, before) {
     if (money(row.cost) !== null || !row.isolated || money(before?.total_used) === null) return;
     let after = null;
-    for (const delay of [2000, 5000, 15000]) {
+    for (const delay of COST_CHECK_DELAYS_MS) {
         await wait(delay);
         try {
             after = await api('/snapshot', {});
@@ -315,7 +316,7 @@ function render() {
     }
     content.append(cards);
     const current = shownRows.filter(r => r.chat_id === chatIdentity(context()).chat_id);
-    content.append(node('p', 'tl-muted', `${t('localChat')}: ${usd(summarize(current).total)} · ${sum.unknown} ${t('unknownCount')}`));
+    content.append(node('p', 'tl-muted', `${t('localChat')}: ${usd(summarize(current).total)}`));
     const account = node('section', 'tl-account'); account.append(node('h3', '', t('account')), button(t('sync'), sync));
     if (snapshot) {
         for (const [key, value] of [['balance', snapshot.unavailable ? t('unavailable') : `US$${snapshot.balance.toFixed(4)}`],
